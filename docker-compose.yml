@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: omnisight_postgres
+    environment:
+      POSTGRES_DB: omnisight
+      POSTGRES_USER: omnisight
+      POSTGRES_PASSWORD: omnisight_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omnisight"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: omnisight_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrantdata:/qdrant/storage
+
+  redis:
+    image: redis:7-alpine
+    container_name: omnisight_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no
+
+volumes:
+  pgdata:
+  qdrantdata:

@@ -1,0 +1,26 @@
+คำแนะนำ: Alembic
+แนะนำให้ใช้ครับ เหตุผลชัดเจน:
+
+ระบบมี Table หลายตัว (employees, shifts, departments, attendance_logs) ที่จะมีการแก้ไข Schema ระหว่างพัฒนาแน่นอน
+Alembic ทำงานคู่กับ SQLAlchemy ได้ native ไม่ต้องติดตั้ง Dependency เพิ่ม
+ป้องกันปัญหา "แก้ Schema ใน Code แต่ Database จริงไม่อัปเดต" ซึ่งเป็นปัญหาคลาสสิกในทีมพัฒนา
+
+สรุป: ใช้ Alembic
+
+คำแนะนำ: MediaPipe vs face-api.js
+MediaPipeface-api.jsความเร็วเร็วกว่ามาก (WASM + SIMD)ช้ากว่าความแม่นยำสูงกว่าปานกลางขนาด Libraryใหญ่กว่าเล็กน้อยเล็กกว่ารองรับ 10 คนพร้อมกัน✅ ออกแบบมาเพื่องานนี้⚠️ เริ่มหน่วงเมื่อหลายคนMaintenanceGoogle ดูแลอยู่ (Active)ชะลอตัวเข้ากับ Vue 3✅✅
+สรุป: แนะนำ MediaPipe — เหมาะกับระบบนี้มากกว่าเพราะต้องรองรับ 10 คนพร้อมกัน และ Ryzen CPU จะรัน WASM ได้เร็วมาก
+
+สรุป Tech Stack สมบูรณ์ทั้งหมด
+Frontend
+ComponentTechnologyBuild ToolVite (Latest)FrameworkVue.js 3 (Latest)UI LibraryDaisyUI (Latest)CSS FrameworkTailwind CSS (Latest)RouterVue RouterState ManagementPiniaClient-side AIMediaPipe (WASM)
+Backend
+ComponentTechnologyRuntimePython 3.12API FrameworkFastAPIData ValidationPydantic v2ORMSQLAlchemyDB MigrationAlembicInference EngineONNX Runtime (CPU)Face ModelInsightFace (buffalo_l)
+Infrastructure
+ComponentTechnologyVector DBQdrant (Docker)Relational DBPostgreSQL (Docker)CacheIn-Memory FastAPI → Redis (Phase ถัดไป)ContainerDocker + Docker Compose
+
+ยืนยัน Tech Stack นี้ได้เลยไหมครับ? ถ้าโอเคผมจะเริ่มเขียน Software Master Bible ทั้ง 12 Chapters เป็นไฟล์เอกสารทันทีครับ
+
+----
+ภาพรวมใหม่ทั้งหมด 12 Chapters
+#Chapter0Technology Stack ← ใหม่1Project Vision & Overview2Use Cases & Actors3System Architecture4AI & Hardware Optimization5Vector DB & Search Strategy6Data Schema & Class Design7API Contract8Frontend UI/UX Specification9Shift & Scope Management10Anti-Spoofing & Security11Implementation Roadmap
