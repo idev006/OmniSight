@@ -268,11 +268,19 @@ Sprint 7 attendance auto-logging: COMPLETE
 เมื่อเริ่ม session ใหม่ให้อ่าน:
 1. `doc/project_management/PROJECT_STATUS.md` — ภาพรวม + phase progress (Phase 1-5)
 2. `doc/project_management/SPRINT_LOG.md` — Sprint 7 (attendance ✅), Sprint 8 (design ✅, impl TODO)
-3. `doc/claude_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design ครบ
+3. `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design ครบ
 4. `doc/project_management/DECISIONS_LOG.md` — ADR-009/010/011 (multi-camera decisions)
 
+**⚠️ Path สำคัญ — ห้ามผิด:**
+| สิ่งของ | Path |
+|---------|------|
+| เอกสารทุกฉบับ | `F:\programming\python\OmniSight\doc\cluade_version\` |
+| PM docs | `F:\programming\python\OmniSight\doc\project_management\` |
+| Python venv (3.12) | `F:\programming\python\OmniSight\my_env\` ← **ที่เดียวเท่านั้น** |
+| Python exe | `F:\programming\python\OmniSight\my_env\Scripts\python.exe` |
+| pip | `F:\programming\python\OmniSight\my_env\Scripts\pip.exe` |
+
 **Environment:**
-- venv: `F:\programming\python\OmniSight\my_env`
 - Backend start: `start-backend.bat` (uvicorn port 8000)
 - DB migration: `migrate.bat upgrade`
 - Services: Docker → PostgreSQL (5432), Qdrant (6333), Redis (6379)
@@ -283,4 +291,4 @@ Sprint 7 attendance auto-logging: COMPLETE
 - sta1 (ccd829a0): ไม่มี dept filter
 - attendance_logs: 2 records (Sprint 7 verified)
 - Qdrant: 7 vectors (6 จริง + 1 orphaned, BUG-002 open)
-- GitHub: https://github.com/idev006/OmniSight (commit 51d1a22)
+- GitHub: https://github.com/idev006/OmniSight (commit 6bb79e9)
