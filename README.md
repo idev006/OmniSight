@@ -77,7 +77,7 @@ docker-compose up -d
 4.  **สร้างไฟล์สำหรับตั้งค่าระบบความปลอดภัย (`.env`):**
     สร้างไฟล์ชื่อ `.env` ไว้ข้างในโฟลเดอร์ `backend/` แล้วใส่การเชื่อมต่อต่าง ๆ (อิงตามระบบของคุณ):
     ```env
-    DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/omnisight
+    DATABASE_URL=postgresql+asyncpg://omnisight:omnisight_pass@localhost:5432/omnisight
     REDIS_URL=redis://localhost:6379/0
     QDRANT_URL=http://localhost:6333
     JWT_SECRET=your_jwt_secret_key_here
