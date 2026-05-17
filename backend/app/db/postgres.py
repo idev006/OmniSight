@@ -6,6 +6,7 @@ settings = get_settings()
 
 engine = create_async_engine(settings.database_url, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+async_session_factory = AsyncSessionLocal   # alias สำหรับใช้นอก FastAPI dependency
 
 
 class Base(DeclarativeBase):

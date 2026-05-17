@@ -96,13 +96,14 @@ class BBox(BaseModel):
 
 class FaceResult(BaseModel):
     tracking_id: int
-    status: str
+    status: str                          # "match" | "unknown"
     employee_id: Optional[UUID4] = None
     full_name: Optional[str] = None
     dept_name: Optional[str] = None
     emp_code: Optional[str] = None
     confidence: float = 0.0
     bbox: BBox
+    attendance_logged: bool = False      # True = บันทึกเวลาแล้ว, False = cooldown หรือ unknown
 
 class ScanResult(BaseModel):
     timestamp: datetime
