@@ -52,6 +52,24 @@ const routes = [
         component: () => import('@/views/AttendanceView.vue'),
         meta: { title: 'Attendance Logs' },
       },
+      {
+        path: 'users',
+        name: 'Users',
+        component: () => import('@/views/UsersView.vue'),
+        meta: { title: 'User Management', role: 'ADMIN' },
+      },
+      {
+        path: 'cameras',
+        name: 'Cameras',
+        component: () => import('@/views/CamerasView.vue'),
+        meta: { title: 'Cameras' },
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('@/views/SettingsView.vue'),
+        meta: { title: 'System Settings', role: 'ADMIN' },
+      },
     ],
   },
 ]
@@ -65,6 +83,10 @@ router.beforeEach((to) => {
   const auth = useAuthStore()
   if (!to.meta.public && !auth.token) {
     return { name: 'Login' }
+  }
+  // Role-guard: redirect if user lacks required role
+  if (to.meta.role && auth.user?.role !== to.meta.role) {
+    return { name: 'Scan' }
   }
 })
 

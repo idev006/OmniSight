@@ -50,3 +50,10 @@ test_websocket_scan.py
 
 # pip wheel cache
 *.whl
+
+# Logs
+*.log
+uvicorn*.log
+
+# Temp files
+tmp*.json

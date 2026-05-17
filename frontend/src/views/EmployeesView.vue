@@ -1,110 +1,176 @@
 <template>
-  <div class="flex flex-col gap-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">Employees</h1>
-      <button class="btn btn-primary btn-sm" @click="openCreate">+ Add Employee</button>
+  <div class="flex flex-col gap-5">
+
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-bold tracking-wide">Employees</h1>
+        <p class="text-sm text-base-content/40 mt-0.5">Manage employees and face enrollment</p>
+      </div>
+      <button class="btn btn-primary btn-sm gap-2" @click="openCreate">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        Add Employee
+      </button>
     </div>
 
-    <div class="flex gap-2">
-      <input v-model="search" type="text" placeholder="Search by name or code..." class="input input-bordered input-sm flex-1 max-w-sm" />
-      <select v-model="filterDept" class="select select-bordered select-sm">
-        <option value="">All Departments</option>
-        <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
-      </select>
-    </div>
+    <DataTable
+      :columns="columns"
+      :rows="pageRows"
+      :total="filtered.length"
+      :loading="loading"
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      v-model:search="search"
+      :actions="actions"
+      search-placeholder="Search name or code…"
+      empty-text="No employees match your search"
+    >
+      <!-- Extra toolbar: department filter -->
+      <template #toolbar>
+        <select v-model="filterDept" class="select select-bordered select-sm">
+          <option value="">All Departments</option>
+          <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
+        </select>
+      </template>
 
-    <div class="overflow-x-auto">
-      <table class="table table-sm">
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Name</th>
-            <th>Department</th>
-            <th>Enrollment</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="emp in filtered" :key="emp.id">
-            <td class="font-mono text-sm">{{ emp.emp_code }}</td>
-            <td>{{ emp.full_name }}</td>
-            <td>{{ deptName(emp.dept_id) }}</td>
-            <td>
-              <div class="flex gap-0.5">
-                <div
-                  v-for="i in 6" :key="i"
-                  class="w-3 h-3 rounded-sm"
-                  :class="i <= emp.enrollment_count ? 'bg-success' : 'bg-base-300'"
-                />
-              </div>
-            </td>
-            <td>
-              <span class="badge badge-sm" :class="emp.is_active ? 'badge-success' : 'badge-ghost'">
-                {{ emp.is_active ? 'Active' : 'Inactive' }}
-              </span>
-            </td>
-            <td>
-              <RouterLink :to="`/employees/${emp.id}/enroll`" class="btn btn-ghost btn-xs">Enroll</RouterLink>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <!-- Custom cells -->
+      <template #cell-full_name="{ row }">
+        <div class="flex items-center gap-2">
+          <div class="avatar placeholder">
+            <div class="bg-neutral text-neutral-content rounded-full w-7 text-xs">
+              <span>{{ row.full_name[0] }}</span>
+            </div>
+          </div>
+          <span class="font-medium">{{ row.full_name }}</span>
+        </div>
+      </template>
+
+      <template #cell-dept_id="{ row }">
+        <span class="badge badge-ghost badge-sm">{{ deptName(row.dept_id) }}</span>
+      </template>
+
+      <template #cell-enrollment_count="{ row }">
+        <div class="flex items-center gap-1.5">
+          <div class="flex gap-0.5">
+            <div
+              v-for="i in 6" :key="i"
+              class="w-2.5 h-2.5 rounded-sm"
+              :class="i <= row.enrollment_count ? 'bg-success' : 'bg-base-300'"
+            />
+          </div>
+          <span class="text-xs text-base-content/40">{{ row.enrollment_count }}/6</span>
+        </div>
+      </template>
+
+      <template #cell-is_active="{ row }">
+        <div class="flex items-center gap-1.5">
+          <div class="w-1.5 h-1.5 rounded-full" :class="row.is_active ? 'bg-success' : 'bg-base-300'"></div>
+          <span class="text-xs" :class="row.is_active ? 'text-success' : 'text-base-content/30'">
+            {{ row.is_active ? 'Active' : 'Inactive' }}
+          </span>
+        </div>
+      </template>
+    </DataTable>
 
     <!-- Create modal -->
-    <dialog ref="modal" class="modal">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg mb-4">Add Employee</h3>
-        <form @submit.prevent="createEmployee">
-          <div class="form-control mb-3">
-            <label class="label"><span class="label-text">Employee Code</span></label>
-            <input v-model="form.emp_code" class="input input-bordered" required />
-          </div>
-          <div class="form-control mb-3">
-            <label class="label"><span class="label-text">Full Name</span></label>
-            <input v-model="form.full_name" class="input input-bordered" required />
-          </div>
-          <div class="form-control mb-6">
-            <label class="label"><span class="label-text">Department</span></label>
+    <dialog ref="modal" class="modal modal-bottom sm:modal-middle">
+      <div class="modal-box max-w-md">
+        <div class="flex items-center justify-between mb-5">
+          <h3 class="font-bold text-lg">Add Employee</h3>
+          <button class="btn btn-ghost btn-sm btn-circle" @click="modal.close()">✕</button>
+        </div>
+        <form @submit.prevent="createEmployee" class="flex flex-col gap-3">
+          <label class="form-control">
+            <div class="label py-1"><span class="label-text text-xs font-medium uppercase tracking-wider opacity-60">Employee Code *</span></div>
+            <input v-model="form.emp_code" class="input input-bordered" required placeholder="e.g. EMP001" />
+          </label>
+          <label class="form-control">
+            <div class="label py-1"><span class="label-text text-xs font-medium uppercase tracking-wider opacity-60">Full Name *</span></div>
+            <input v-model="form.full_name" class="input input-bordered" required placeholder="First Last" />
+          </label>
+          <label class="form-control">
+            <div class="label py-1"><span class="label-text text-xs font-medium uppercase tracking-wider opacity-60">Department *</span></div>
             <select v-model="form.dept_id" class="select select-bordered" required>
+              <option value="" disabled>Select department…</option>
               <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
             </select>
-          </div>
-          <div class="modal-action">
+          </label>
+          <div class="modal-action mt-2">
             <button type="button" class="btn btn-ghost" @click="modal.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create</button>
+            <button type="submit" class="btn btn-primary" :disabled="saving">
+              <span v-if="saving" class="loading loading-spinner loading-sm"></span>
+              Create
+            </button>
           </div>
         </form>
       </div>
       <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
+
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '@/api/client'
+import { useToast } from '@/composables/useToast'
+import DataTable from '@/components/DataTable.vue'
 
-const employees = ref([])
+const router = useRouter()
+const toast  = useToast()
+
+const employees   = ref([])
 const departments = ref([])
-const search = ref('')
-const filterDept = ref('')
-const modal = ref(null)
-const form = ref({ emp_code: '', full_name: '', dept_id: '' })
+const loading     = ref(false)
+const saving      = ref(false)
+const modal       = ref(null)
+const form        = ref({ emp_code: '', full_name: '', dept_id: '' })
 
-const filtered = computed(() =>
-  employees.value.filter((e) => {
-    const matchSearch = !search.value ||
-      e.full_name.toLowerCase().includes(search.value.toLowerCase()) ||
-      e.emp_code.toLowerCase().includes(search.value.toLowerCase())
-    const matchDept = !filterDept.value || e.dept_id === filterDept.value
-    return matchSearch && matchDept
-  })
-)
+// Table state
+const page       = ref(1)
+const pageSize   = ref(25)
+const search     = ref('')
+const filterDept = ref('')
+
+const columns = [
+  { key: 'emp_code',         label: 'Code',       class: 'font-mono text-sm', hideMobile: false },
+  { key: 'full_name',        label: 'Name' },
+  { key: 'dept_id',          label: 'Department',  hideMobile: true },
+  { key: 'enrollment_count', label: 'Enrollment' },
+  { key: 'is_active',        label: 'Status',      hideMobile: true },
+]
+
+const actions = [
+  {
+    label: 'Enroll Face',
+    handler: (row) => router.push(`/employees/${row.id}/enroll`),
+  },
+]
+
+const filtered = computed(() => {
+  let list = employees.value
+  const q = search.value.toLowerCase().trim()
+  if (q) {
+    list = list.filter(e =>
+      e.full_name.toLowerCase().includes(q) ||
+      e.emp_code.toLowerCase().includes(q)
+    )
+  }
+  if (filterDept.value) {
+    list = list.filter(e => e.dept_id === filterDept.value)
+  }
+  return list
+})
+
+const pageRows = computed(() => {
+  const from = (page.value - 1) * pageSize.value
+  return filtered.value.slice(from, from + pageSize.value)
+})
 
 function deptName(id) {
-  return departments.value.find((d) => d.id === id)?.name || '-'
+  return departments.value.find(d => d.id === id)?.name || '—'
 }
 
 function openCreate() {
@@ -113,18 +179,31 @@ function openCreate() {
 }
 
 async function createEmployee() {
-  await api.post('/api/v1/employees', form.value)
-  modal.value.close()
-  await load()
+  saving.value = true
+  try {
+    await api.post('/api/v1/employees', form.value)
+    modal.value.close()
+    toast.success(`Employee "${form.value.full_name}" added`)
+    await load()
+  } catch (e) {
+    toast.error(e.response?.data?.detail || 'Failed to create employee')
+  } finally {
+    saving.value = false
+  }
 }
 
 async function load() {
-  const [empRes, deptRes] = await Promise.all([
-    api.get('/api/v1/employees'),
-    api.get('/api/v1/departments'),
-  ])
-  employees.value = empRes.data
-  departments.value = deptRes.data
+  loading.value = true
+  try {
+    const [empRes, deptRes] = await Promise.all([
+      api.get('/api/v1/employees'),
+      api.get('/api/v1/departments'),
+    ])
+    employees.value   = empRes.data
+    departments.value = deptRes.data
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(load)
