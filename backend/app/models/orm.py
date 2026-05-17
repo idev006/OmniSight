@@ -1,7 +1,7 @@
 from sqlalchemy import (
     Column, String, Boolean, SmallInteger, Float,
     DateTime, ForeignKey, Time, BigInteger, UniqueConstraint,
-    text,
+    Text, text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -82,3 +82,56 @@ class AttendanceLog(Base):
     confidence_score = Column(Float, nullable=False)
     employee = relationship("Employee", back_populates="attendance_logs")
     station = relationship("Station", back_populates="attendance_logs")
+
+
+# ─── User & RBAC ──────────────────────────────────────────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    username = Column(String(50), unique=True, nullable=False)
+    hashed_password = Column(String(200), nullable=False)
+    full_name = Column(String(200), nullable=True)
+    role = Column(String(20), nullable=False, default="OPERATOR")  # ADMIN | HR | OPERATOR
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=text("NOW()"))
+    user_stations = relationship("UserStation", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserStation(Base):
+    """OPERATOR access control — กำหนดว่า user นี้ใช้ station ไหนได้บ้าง"""
+    __tablename__ = "user_stations"
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    station_id = Column(UUID(as_uuid=True), ForeignKey("stations.id", ondelete="CASCADE"), primary_key=True)
+    user = relationship("User", back_populates="user_stations")
+    station = relationship("Station")
+
+
+# ─── Camera ───────────────────────────────────────────────────────────────────
+
+class Camera(Base):
+    __tablename__ = "cameras"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    station_id = Column(UUID(as_uuid=True), ForeignKey("stations.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    camera_type = Column(String(20), nullable=False)   # WEBCAM | IP_CAMERA | CCTV | SMARTPHONE
+    rtsp_url = Column(String(500), nullable=True)
+    authorized_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=text("NOW()"))
+    station = relationship("Station")
+    authorized_user = relationship("User")
+
+
+# ─── System Settings ──────────────────────────────────────────────────────────
+
+class SystemSetting(Base):
+    """Live config — เปลี่ยนได้ขณะระบบทำงาน ไม่ต้อง restart"""
+    __tablename__ = "system_settings"
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)
+    value_type = Column(String(20), nullable=False, default="string")  # float|int|bool|string
+    description = Column(Text, nullable=True)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=text("NOW()"), onupdate=text("NOW()"))

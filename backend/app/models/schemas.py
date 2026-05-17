@@ -1,5 +1,5 @@
 from pydantic import BaseModel, UUID4
-from typing import Optional
+from typing import Optional, Literal
 from datetime import time, datetime
 
 
@@ -105,11 +105,6 @@ class FaceResult(BaseModel):
     bbox: BBox
     attendance_logged: bool = False      # True = บันทึกเวลาแล้ว, False = cooldown หรือ unknown
 
-class ScanResult(BaseModel):
-    timestamp: datetime
-    faces: list[FaceResult]
-
-
 # --- Auth ---
 class LoginRequest(BaseModel):
     username: str
@@ -118,3 +113,85 @@ class LoginRequest(BaseModel):
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+# --- User ---
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    full_name: Optional[str] = None
+    role: Literal["ADMIN", "HR", "OPERATOR"] = "OPERATOR"
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[Literal["ADMIN", "HR", "OPERATOR"]] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+class UserOut(BaseModel):
+    id: UUID4
+    username: str
+    full_name: Optional[str]
+    role: str
+    is_active: bool
+    station_ids: list[str] = []
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_user(cls, user) -> "UserOut":
+        obj = cls.model_validate(user)
+        if hasattr(user, "user_stations") and user.user_stations is not None:
+            obj.station_ids = [str(us.station_id) for us in user.user_stations]
+        return obj
+
+class UserStationUpdate(BaseModel):
+    station_ids: list[str]
+
+
+# --- Camera ---
+class CameraCreate(BaseModel):
+    station_id: UUID4
+    name: str
+    camera_type: Literal["WEBCAM", "IP_CAMERA", "CCTV", "SMARTPHONE"]
+    rtsp_url: Optional[str] = None
+    authorized_user_id: Optional[UUID4] = None
+    description: Optional[str] = None
+
+class CameraUpdate(BaseModel):
+    name: Optional[str] = None
+    camera_type: Optional[Literal["WEBCAM", "IP_CAMERA", "CCTV", "SMARTPHONE"]] = None
+    rtsp_url: Optional[str] = None
+    is_active: Optional[bool] = None
+    description: Optional[str] = None
+
+class CameraOut(BaseModel):
+    id: UUID4
+    station_id: UUID4
+    name: str
+    camera_type: str
+    rtsp_url: Optional[str] = None
+    is_active: bool
+    description: Optional[str] = None
+    live_status: str = "offline"    # active | paused | offline  (runtime, not DB)
+    live_fps: float = 0.0           # runtime
+    model_config = {"from_attributes": True}
+
+
+# --- System Setting ---
+class SystemSettingOut(BaseModel):
+    key: str
+    value: str
+    value_type: str
+    description: Optional[str]
+    liveness: str = "live"          # live | graceful | restart  (runtime)
+    model_config = {"from_attributes": True}
+
+class SystemSettingUpdate(BaseModel):
+    value: str
+
+
+# --- ScanResult (updated) ---
+class ScanResult(BaseModel):
+    timestamp: datetime
+    camera_id: str = ""
+    faces: list["FaceResult"]
