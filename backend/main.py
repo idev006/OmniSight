@@ -21,13 +21,18 @@ async def _seed_admin():
     from app.core.security import hash_password
 
     DEFAULT_SETTINGS = [
-        ("match_threshold",    "0.72",  "float",  "Minimum cosine similarity for face match"),
-        ("cooldown_seconds",   "300",   "int",    "Attendance cooldown period (seconds)"),
-        ("max_fps_per_camera", "2",     "int",    "Max frames/sec backend accepts per camera"),
-        ("min_face_quality",   "0.6",   "float",  "Minimum enrollment quality score"),
-        ("unknown_face_alert", "5",     "int",    "Alert threshold: unknown faces per 5 min"),
-        ("inference_workers",  "2",     "int",    "ONNX inference parallel workers"),
-        ("face_detect_size",   "640",   "int",    "Detection input size (640 or 320)"),
+        # Security
+        ("access_token_expire_hours", "8",    "int",   "JWT access token lifetime (hours). Takes effect on next login."),
+        # Face Recognition
+        ("match_threshold",    "0.72",  "float",  "Minimum cosine similarity score for a face match (0.0–1.0)"),
+        ("min_face_quality",   "0.6",   "float",  "Minimum quality score required during enrollment (0.0–1.0)"),
+        # Attendance
+        ("cooldown_seconds",   "300",   "int",    "Minimum seconds between two attendance records for the same person"),
+        ("unknown_face_alert", "5",     "int",    "Trigger alert after N unknown faces detected within 5 minutes"),
+        # Performance
+        ("max_fps_per_camera", "2",     "int",    "Max frames per second the backend processes per camera"),
+        ("inference_workers",  "2",     "int",    "Number of parallel ONNX inference workers (restart required)"),
+        ("face_detect_size",   "640",   "int",    "Input resolution for face detector: 320 (fast) or 640 (accurate)"),
     ]
 
     async with async_session_factory() as db:

@@ -56,6 +56,14 @@
             </RouterLink>
           </li>
           <li>
+            <RouterLink to="/mobile-scan" active-class="active" class="gap-3 rounded-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              Mobile Scan
+            </RouterLink>
+          </li>
+          <li>
             <RouterLink to="/attendance" active-class="active" class="gap-3 rounded-lg">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -86,6 +94,14 @@
 
           <template v-if="auth.isAdmin">
             <li class="menu-title text-[10px] tracking-widest uppercase opacity-40 px-3 mb-0.5 mt-3">System</li>
+            <li>
+              <RouterLink to="/console" active-class="active" class="gap-3 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+                Pilot Console
+              </RouterLink>
+            </li>
             <li>
               <RouterLink to="/stations" active-class="active" class="gap-3 rounded-lg">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -152,7 +168,7 @@
 
         <!-- Logout -->
         <div class="px-3 pb-4">
-          <button class="btn btn-ghost btn-sm w-full justify-start gap-2 text-error/80 hover:text-error hover:bg-error/10" @click="auth.logout()">
+          <button class="btn btn-ghost btn-sm w-full justify-start gap-2 text-error/80 hover:text-error hover:bg-error/10" @click="handleLogout()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
@@ -169,9 +185,19 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, THEMES } from '@/stores/theme'
+import { useConfirm } from '@/composables/useConfirm'
 
 const auth = useAuthStore()
 const themeStore = useThemeStore()
+const { confirm } = useConfirm()
+
+async function handleLogout() {
+  const ok = await confirm(
+    `Sign out of OmniSight? You will need to log in again to continue.`,
+    { title: 'Sign Out', confirmLabel: 'Sign Out', confirmClass: 'btn-error' }
+  )
+  if (ok) auth.logout()
+}
 const themes = THEMES
 
 const userInitial = computed(() =>

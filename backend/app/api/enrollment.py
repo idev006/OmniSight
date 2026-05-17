@@ -8,6 +8,7 @@ from app.models.orm import Employee, FaceTemplate
 from app.models.schemas import EnrollmentStatus, FaceTemplateOut
 from app.core.config import get_settings
 from app.core.face_engine import face_engine
+from app.core.security import require_hr, CurrentUser
 from qdrant_client.models import PointStruct, PointIdsList
 import uuid, shutil
 from pathlib import Path
@@ -17,7 +18,11 @@ settings = get_settings()
 
 
 @router.get("/{employee_id}/enrollment", response_model=EnrollmentStatus)
-async def get_enrollment_status(employee_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_enrollment_status(
+    employee_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
     result = await db.execute(
         select(Employee)
         .options(selectinload(Employee.face_templates))
@@ -47,6 +52,7 @@ async def upload_face_sample(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     qdrant=Depends(get_qdrant),
+    _: CurrentUser = Depends(require_hr),
 ):
     if not 0 <= sample_index <= 5:
         raise HTTPException(400, "sample_index must be 0–5")
@@ -125,6 +131,7 @@ async def delete_face_sample(
     sample_index: int,
     db: AsyncSession = Depends(get_db),
     qdrant=Depends(get_qdrant),
+    _: CurrentUser = Depends(require_hr),
 ):
     result = await db.execute(
         select(FaceTemplate).where(

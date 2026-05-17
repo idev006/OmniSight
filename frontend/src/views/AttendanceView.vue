@@ -1,84 +1,205 @@
 <template>
   <div class="flex flex-col gap-5">
 
+    <!-- Header -->
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h1 class="text-xl font-bold tracking-wide">Attendance Logs</h1>
-        <p class="text-sm text-base-content/40 mt-0.5">Face recognition attendance records</p>
+        <h1 class="text-xl font-bold tracking-wide">Attendance</h1>
+        <p class="text-sm text-base-content/40 mt-0.5">Face recognition attendance records &amp; reports</p>
       </div>
-      <!-- CSV export placeholder -->
-      <button class="btn btn-ghost btn-sm gap-2" @click="exportCSV">
+      <button v-if="activeTab === 'logs'" class="btn btn-ghost btn-sm gap-2" @click="exportCSV">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
         Export CSV
       </button>
+      <button v-else class="btn btn-ghost btn-sm gap-2" @click="exportSummaryCSV">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        Export Report CSV
+      </button>
     </div>
 
-    <DataTable
-      :columns="columns"
-      :rows="pageRows"
-      :total="logs.length"
-      :loading="loading"
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      v-model:search="search"
-      :actions="[]"
-      search-placeholder="Search name or code…"
-      empty-text="No attendance records found"
-    >
-      <!-- Extra toolbar: date + department filters -->
-      <template #toolbar>
-        <input
-          v-model="filterDate"
-          type="date"
-          class="input input-bordered input-sm"
-          @change="fetchLogs"
-        />
-        <select v-model="filterDept" class="select select-bordered select-sm" @change="fetchLogs">
-          <option value="">All Departments</option>
-          <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-        <button class="btn btn-primary btn-sm" @click="fetchLogs">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
-          </svg>
-          Filter
-        </button>
-      </template>
+    <!-- Tabs -->
+    <div role="tablist" class="tabs tabs-bordered">
+      <button role="tab" class="tab" :class="{ 'tab-active': activeTab === 'logs' }" @click="activeTab = 'logs'">
+        Logs
+      </button>
+      <button role="tab" class="tab" :class="{ 'tab-active': activeTab === 'summary' }" @click="activateReport">
+        Monthly Report
+      </button>
+    </div>
 
-      <!-- Custom cells -->
-      <template #cell-timestamp="{ value }">
-        <div class="flex flex-col">
-          <span class="text-sm font-medium">{{ formatDate(value) }}</span>
-          <span class="text-xs text-base-content/40">{{ formatTime(value) }}</span>
+    <!-- ───── TAB: LOGS ────────────────────────────────────────────────────── -->
+    <template v-if="activeTab === 'logs'">
+      <DataTable
+        :columns="columns"
+        :rows="pageRows"
+        :total="filteredLogs.length"
+        :loading="loading"
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        v-model:search="search"
+        :actions="[]"
+        search-placeholder="Search name or code…"
+        empty-text="No attendance records found"
+      >
+        <template #toolbar>
+          <input v-model="filterDate" type="date" class="input input-bordered input-sm" @change="fetchLogs" />
+          <select v-model="filterDept" class="select select-bordered select-sm" @change="fetchLogs">
+            <option value="">All Departments</option>
+            <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+          <button class="btn btn-primary btn-sm" @click="fetchLogs">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
+            </svg>
+            Filter
+          </button>
+        </template>
+
+        <template #cell-timestamp="{ value }">
+          <div class="flex flex-col">
+            <span class="text-sm font-medium">{{ formatDate(value) }}</span>
+            <span class="text-xs text-base-content/40">{{ formatTime(value) }}</span>
+          </div>
+        </template>
+        <template #cell-full_name="{ row }">
+          <div class="flex items-center gap-2">
+            <div class="avatar placeholder">
+              <div class="bg-neutral text-neutral-content rounded-full w-6 text-xs">
+                <span>{{ (row.full_name || '?')[0] }}</span>
+              </div>
+            </div>
+            <span class="font-medium text-sm">{{ row.full_name || '—' }}</span>
+          </div>
+        </template>
+        <template #cell-confidence_score="{ value }">
+          <span class="badge badge-sm font-mono"
+            :class="value >= 0.85 ? 'badge-success' : value >= 0.72 ? 'badge-warning' : 'badge-error'">
+            {{ (value * 100).toFixed(1) }}%
+          </span>
+        </template>
+        <template #cell-station_name="{ value }">
+          <span class="badge badge-ghost badge-sm">{{ value || '—' }}</span>
+        </template>
+      </DataTable>
+    </template>
+
+    <!-- ───── TAB: SUMMARY ────────────────────────────────────────────────── -->
+    <template v-else>
+
+      <!-- Filters row -->
+      <div class="flex gap-2 flex-wrap items-end">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Month</span></label>
+          <input v-model="summaryMonth" type="month" class="input input-bordered input-sm"
+            @change="fetchSummary" />
         </div>
-      </template>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Department</span></label>
+          <select v-model="summaryDept" class="select select-bordered select-sm" @change="fetchSummary">
+            <option value="">All Departments</option>
+            <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm self-end" @click="fetchSummary"
+          :class="{ loading: summaryLoading }">
+          Apply
+        </button>
+      </div>
 
-      <template #cell-full_name="{ row }">
-        <div class="flex items-center gap-2">
-          <div class="avatar placeholder">
-            <div class="bg-neutral text-neutral-content rounded-full w-6 text-xs">
-              <span>{{ (row.full_name || '?')[0] }}</span>
+      <!-- Summary KPI cards -->
+      <div v-if="summary" class="stats bg-base-100 border border-base-300 shadow-sm w-full">
+        <div class="stat py-3">
+          <div class="stat-title text-xs">Total Scans</div>
+          <div class="stat-value text-2xl">{{ summary.total_records }}</div>
+          <div class="stat-desc">for {{ summary.month }}</div>
+        </div>
+        <div class="stat py-3">
+          <div class="stat-title text-xs">Unique Employees</div>
+          <div class="stat-value text-2xl text-primary">{{ summary.unique_employees }}</div>
+          <div class="stat-desc">different people</div>
+        </div>
+        <div class="stat py-3">
+          <div class="stat-title text-xs">Active Days</div>
+          <div class="stat-value text-2xl text-success">{{ activeDays }}</div>
+          <div class="stat-desc">days with attendance</div>
+        </div>
+        <div class="stat py-3">
+          <div class="stat-title text-xs">Avg / Day</div>
+          <div class="stat-value text-2xl">{{ avgPerDay }}</div>
+          <div class="stat-desc">scans per active day</div>
+        </div>
+      </div>
+
+      <!-- Loading spinner -->
+      <div v-if="summaryLoading" class="flex justify-center py-12">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+
+      <div v-else-if="summary" class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+
+        <!-- Daily bar chart (2/3 width) -->
+        <div class="xl:col-span-2 bg-base-100 rounded-xl border border-base-300 p-5">
+          <div class="text-sm font-semibold mb-4 text-base-content/70">Daily Attendance — {{ summary.month }}</div>
+          <div class="flex items-end gap-0.5 h-36" v-if="dayMax > 0">
+            <div
+              v-for="day in summary.by_day" :key="day.date"
+              class="flex-1 flex flex-col items-center gap-0.5 group relative"
+            >
+              <!-- Bar -->
+              <div
+                class="w-full rounded-sm transition-all duration-200"
+                :class="day.count > 0 ? 'bg-primary/70 hover:bg-primary' : 'bg-base-300/30'"
+                :style="{ height: day.count > 0 ? Math.max(4, (day.count / dayMax) * 128) + 'px' : '2px' }"
+              ></div>
+              <!-- Day number every 5th -->
+              <div v-if="Number(day.date.slice(8)) % 5 === 0 || Number(day.date.slice(8)) === 1"
+                class="text-[9px] text-base-content/30 leading-none">
+                {{ Number(day.date.slice(8)) }}
+              </div>
+              <div v-else class="text-[9px] leading-none invisible">·</div>
+              <!-- Tooltip -->
+              <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2
+                          hidden group-hover:flex flex-col items-center
+                          bg-base-content text-base-100 text-[10px] rounded px-1.5 py-1 whitespace-nowrap z-10 shadow">
+                {{ day.date.slice(8) }} {{ monthName }} — {{ day.count }} scans / {{ day.unique_employees }} ppl
+                <div class="absolute top-full border-4 border-transparent border-t-base-content"></div>
+              </div>
             </div>
           </div>
-          <span class="font-medium text-sm">{{ row.full_name || '—' }}</span>
+          <div v-else class="flex items-center justify-center h-36 text-base-content/25 text-sm">
+            No attendance data for this month
+          </div>
         </div>
-      </template>
 
-      <template #cell-confidence_score="{ value }">
-        <span
-          class="badge badge-sm font-mono"
-          :class="value >= 0.85 ? 'badge-success' : value >= 0.72 ? 'badge-warning' : 'badge-error'"
-        >
-          {{ (value * 100).toFixed(1) }}%
-        </span>
-      </template>
+        <!-- Dept breakdown (1/3 width) -->
+        <div class="bg-base-100 rounded-xl border border-base-300 p-5">
+          <div class="text-sm font-semibold mb-4 text-base-content/70">By Department</div>
+          <div v-if="summary.by_department.length === 0"
+            class="flex items-center justify-center h-24 text-base-content/25 text-xs">
+            No data
+          </div>
+          <div v-else class="flex flex-col gap-2.5">
+            <div v-for="dept in summary.by_department" :key="dept.dept_id" class="flex flex-col gap-1">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-medium truncate">{{ dept.dept_name }}</span>
+                <span class="text-base-content/40 font-mono shrink-0 ml-2">{{ dept.count }}</span>
+              </div>
+              <div class="w-full h-1.5 bg-base-300 rounded-full overflow-hidden">
+                <div class="h-full bg-primary/60 rounded-full"
+                  :style="{ width: Math.max(4, (dept.count / summary.total_records) * 100).toFixed(1) + '%' }">
+                </div>
+              </div>
+              <div class="text-[10px] text-base-content/30">{{ dept.unique_employees }} unique employees</div>
+            </div>
+          </div>
+        </div>
 
-      <template #cell-station_name="{ value }">
-        <span class="badge badge-ghost badge-sm">{{ value || '—' }}</span>
-      </template>
-    </DataTable>
+      </div>
+    </template>
 
   </div>
 </template>
@@ -91,13 +212,16 @@ import DataTable from '@/components/DataTable.vue'
 
 const toast = useToast()
 
-const logs        = ref([])
+// ── Shared ────────────────────────────────────────────────────────────────────
 const departments = ref([])
-const loading     = ref(false)
+const activeTab   = ref('logs')
 
-const page       = ref(1)
-const pageSize   = ref(25)
-const search     = ref('')
+// ── Logs tab ──────────────────────────────────────────────────────────────────
+const logs      = ref([])
+const loading   = ref(false)
+const page      = ref(1)
+const pageSize  = ref(25)
+const search    = ref('')
 const filterDate = ref(new Date().toISOString().slice(0, 10))
 const filterDept = ref('')
 
@@ -109,7 +233,6 @@ const columns = [
   { key: 'confidence_score', label: 'Confidence' },
 ]
 
-// Client-side search filter (date/dept filters hit the API)
 const filteredLogs = computed(() => {
   const q = search.value.toLowerCase().trim()
   if (!q) return logs.value
@@ -136,11 +259,11 @@ async function fetchLogs() {
   page.value = 1
   try {
     const params = {}
-    if (filterDate.value) params.date     = filterDate.value
-    if (filterDept.value) params.dept_id  = filterDept.value
+    if (filterDate.value) params.date    = filterDate.value
+    if (filterDept.value) params.dept_id = filterDept.value
     const { data } = await api.get('/api/v1/attendance', { params })
     logs.value = data
-  } catch (e) {
+  } catch {
     toast.error('Failed to load attendance logs')
   } finally {
     loading.value = false
@@ -148,27 +271,77 @@ async function fetchLogs() {
 }
 
 function exportCSV() {
-  if (!filteredLogs.value.length) {
-    toast.warning('No records to export')
-    return
-  }
-  const header = ['Timestamp', 'Employee', 'Code', 'Station', 'Confidence']
+  if (!filteredLogs.value.length) { toast.warning('No records to export'); return }
+  const header = ['Timestamp', 'Employee', 'Code', 'Department', 'Station', 'Confidence']
   const rows = filteredLogs.value.map(l => [
     new Date(l.timestamp).toLocaleString(),
-    l.full_name || '',
-    l.emp_code  || '',
+    l.full_name    || '',
+    l.emp_code     || '',
+    l.dept_name    || '',
     l.station_name || '',
     (l.confidence_score * 100).toFixed(1) + '%',
   ])
-  const csv = [header, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+  downloadCSV([header, ...rows], `attendance_${filterDate.value || 'all'}.csv`)
+  toast.success('CSV exported')
+}
+
+// ── Summary tab ───────────────────────────────────────────────────────────────
+const summary        = ref(null)
+const summaryLoading = ref(false)
+const summaryMonth   = ref(new Date().toISOString().slice(0, 7))
+const summaryDept    = ref('')
+
+const activeDays = computed(() =>
+  summary.value ? summary.value.by_day.filter(d => d.count > 0).length : 0
+)
+const avgPerDay = computed(() => {
+  if (!summary.value || activeDays.value === 0) return 0
+  return (summary.value.total_records / activeDays.value).toFixed(1)
+})
+const dayMax = computed(() =>
+  summary.value ? Math.max(...summary.value.by_day.map(d => d.count), 1) : 1
+)
+const monthName = computed(() => {
+  if (!summaryMonth.value) return ''
+  const [y, m] = summaryMonth.value.split('-')
+  return new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'short', year: 'numeric' })
+})
+
+function activateReport() {
+  activeTab.value = 'summary'
+  if (!summary.value) fetchSummary()
+}
+
+async function fetchSummary() {
+  summaryLoading.value = true
+  try {
+    const params = { month: summaryMonth.value }
+    if (summaryDept.value) params.dept_id = summaryDept.value
+    const { data } = await api.get('/api/v1/attendance/summary', { params })
+    summary.value = data
+  } catch {
+    toast.error('Failed to load attendance summary')
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+function exportSummaryCSV() {
+  if (!summary.value) { toast.warning('Load summary first'); return }
+  const header = ['Date', 'Total Scans', 'Unique Employees']
+  const rows = summary.value.by_day.map(d => [d.date, d.count, d.unique_employees])
+  downloadCSV([header, ...rows], `attendance_summary_${summary.value.month}.csv`)
+  toast.success('Summary CSV exported')
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+function downloadCSV(rows, filename) {
+  const csv  = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
-  a.href     = url
-  a.download = `attendance_${filterDate.value || 'all'}.csv`
-  a.click()
+  a.href = url; a.download = filename; a.click()
   URL.revokeObjectURL(url)
-  toast.success('CSV exported')
 }
 
 onMounted(async () => {

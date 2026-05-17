@@ -30,8 +30,10 @@ def verify_password(plain: str, hashed: str) -> bool:
 # ─── JWT ──────────────────────────────────────────────────────────────────────
 
 def create_access_token(sub: str, role: str, user_id: str,
-                        station_ids: list[str] | None = None) -> str:
-    exp = datetime.now(timezone.utc) + timedelta(hours=settings.access_token_expire_hours)
+                        station_ids: list[str] | None = None,
+                        expire_hours: int | None = None) -> str:
+    hours = expire_hours if expire_hours is not None else settings.access_token_expire_hours
+    exp = datetime.now(timezone.utc) + timedelta(hours=hours)
     payload = {
         "sub": sub,
         "role": role,

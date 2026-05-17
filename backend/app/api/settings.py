@@ -20,13 +20,18 @@ router = APIRouter()
 
 # Settings ที่มีผลทันที vs ต้องการ graceful restart
 LIVENESS = {
+    # Security
+    "access_token_expire_hours": "graceful",   # new tokens only
+    # Face Recognition
     "match_threshold":    "live",
-    "cooldown_seconds":   "live",
-    "max_fps_per_camera": "live",
     "min_face_quality":   "live",
+    # Attendance
+    "cooldown_seconds":   "live",
     "unknown_face_alert": "live",
-    "inference_workers":  "graceful",
-    "face_detect_size":   "graceful",
+    # Performance
+    "max_fps_per_camera": "live",
+    "inference_workers":  "restart",
+    "face_detect_size":   "restart",
 }
 
 

@@ -5,13 +5,17 @@ from sqlalchemy.orm import selectinload
 from app.db.postgres import get_db
 from app.models.orm import Employee, FaceTemplate
 from app.models.schemas import EmployeeCreate, EmployeeOut
+from app.core.security import require_hr, CurrentUser
 import uuid
 
 router = APIRouter()
 
 
 @router.get("", response_model=list[EmployeeOut])
-async def list_employees(db: AsyncSession = Depends(get_db)):
+async def list_employees(
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
     result = await db.execute(
         select(Employee)
         .options(selectinload(Employee.face_templates))
@@ -22,7 +26,11 @@ async def list_employees(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=EmployeeOut, status_code=201)
-async def create_employee(body: EmployeeCreate, db: AsyncSession = Depends(get_db)):
+async def create_employee(
+    body: EmployeeCreate,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
     emp = Employee(**body.model_dump())
     db.add(emp)
     await db.commit()
@@ -31,7 +39,11 @@ async def create_employee(body: EmployeeCreate, db: AsyncSession = Depends(get_d
 
 
 @router.get("/{employee_id}", response_model=EmployeeOut)
-async def get_employee(employee_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_employee(
+    employee_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
     result = await db.execute(
         select(Employee)
         .options(selectinload(Employee.face_templates))
@@ -44,7 +56,12 @@ async def get_employee(employee_id: uuid.UUID, db: AsyncSession = Depends(get_db
 
 
 @router.patch("/{employee_id}", response_model=EmployeeOut)
-async def update_employee(employee_id: uuid.UUID, body: EmployeeCreate, db: AsyncSession = Depends(get_db)):
+async def update_employee(
+    employee_id: uuid.UUID,
+    body: EmployeeCreate,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
     result = await db.execute(
         select(Employee)
         .options(selectinload(Employee.face_templates))

@@ -228,48 +228,278 @@ Sprint 7 attendance auto-logging: COMPLETE
 
 ---
 
-## Sprint 8 — Implementation (Next TODO)
-**เป้าหมาย:** User Management + RBAC (ต้องทำก่อน multi-camera)
+## Sprint 8 — Auth/Security Implementation ✅ DONE
+**วันที่:** 2026-05-17 (Session 5)  
+**เป้าหมาย:** ระบบ Auth/Authz ครบถ้วน — SSOT, server-side authorization, no native dialogs
 
-### งานที่ต้องทำถัดไป (ลำดับความสำคัญ)
+### สิ่งที่ทำ
 
-1. **[HIGH] User Management + RBAC**
-   - สร้าง `users` table: id, username, hashed_password, role (ADMIN/HR/OPERATOR)
-   - สร้าง `user_stations` table: user_id, station_id (OPERATOR access control)
-   - `/api/v1/users` CRUD endpoints
-   - bcrypt password hashing แทน hardcoded admin/admin
+#### 1. DataTable inline button fix
+- **ปัญหา:** operator1 row (3 actions: Edit + Stations + Delete) แสดงเป็น ⋮ dropdown แทน inline buttons
+- **แก้:** `DataTable.vue` — เปลี่ยน threshold `<= 2` → `<= 3` ทำให้ 3 actions ขึ้นไปก็แสดง inline ได้
 
-2. **[HIGH] WebSocket station authorization**
-   - ตรวจสอบ JWT token จริง (ตอนนี้แค่ไม่ว่าง)
-   - OPERATOR ต้องมี station_id ใน JWT claims หรือ user_stations table
+#### 2. useConfirm composable + ConfirmModal
+- **ไฟล์ใหม่:** `frontend/src/composables/useConfirm.js`
+  - Singleton pattern ด้วย module-level refs
+  - `confirm(msg, opts)` returns `Promise<boolean>`
+  - ใช้แทน `window.confirm()` ทั่วทั้ง app
+- **ไฟล์ใหม่:** `frontend/src/components/ConfirmModal.vue`
+  - DaisyUI `<dialog>` (native HTML dialog element)
+  - `watch(isOpen)` → `showModal()` / `close()`
+  - Backdrop click = cancel
+- **App.vue:** mount `<ConfirmModal />` globally + `verifySession()` on mount
 
-3. **[HIGH] JWT fix (BUG-001)**
-   - เพิ่ม `ACCESS_TOKEN_EXPIRE_HOURS=8` ใน config
+#### 3. Auth Store SSOT Rewrite
+- **ไฟล์:** `frontend/src/stores/auth.js` — เขียนใหม่ทั้งหมด
+  - Export `TOKEN_KEY = 'omnisight-token'` เพื่อใช้จาก client.js
+  - `LEGACY_KEYS = ['token']` — clean up old localStorage key on init
+  - `user` computed: ตรวจ expiry (10s buffer) + ตรวจ `sub` + `role` — return null ถ้า fail ทุก case
+  - `isLoggedIn = !!user` — ครอบ expiry โดยอัตโนมัติ
+  - `isTokenExpired(token)` helper function
+  - `login()`, `logout()`, `forceLogout(reason)`, `verifySession()`, `_clearState()`
+  - `verifySession()` → GET /api/v1/auth/me → update `_fullName`
 
-4. **[HIGH] Camera model + CRUD API** (Phase 4 เริ่ม)
-   - `cameras` table + migration
-   - `/api/v1/cameras` CRUD
-   - อัพเดท WebSocket รับ `camera_id`
+#### 4. Axios Client Rewrite
+- **ไฟล์:** `frontend/src/api/client.js`
+  - request interceptor: ดึง token จาก `localStorage.getItem(TOKEN_KEY)`
+  - response interceptor: 401 → ลบ token + redirect พร้อม `reason` query param
+  - `_isRedirecting` flag ป้องกัน multiple redirects จาก concurrent 401
 
-5. **[HIGH] CameraManager + Redis Pub/Sub**
-   - `services/camera_manager.py`
-   - `/ws/console` — Pilot Console WebSocket
+#### 5. Router Guards Rewrite
+- **ไฟล์:** `frontend/src/router/index.js`
+  - ทุก protected route มี `meta.roles: ['ADMIN', 'HR']` หรือ `meta.roles: ['ADMIN']`
+  - Guard ใช้ `auth.isLoggedIn` (ครอบ expiry) แทน `auth.token`
+  - Role mismatch → redirect `/scan` แทน 404
 
-6. **[MED] BUG-002: Orphaned Qdrant vector**
-   - reconcile script
+#### 6. SettingsView Rewrite
+- **ไฟล์:** `frontend/src/views/SettingsView.vue`
+  - 4 กลุ่ม: 🔐 Security, 👁️ Face Recognition, 📋 Attendance, ⚡ Performance
+  - `access_token_expire_hours` อยู่ใน Security group
+  - META object: label, min, max, hint, type per key
+  - ใช้ `useConfirm` ทุก save/reset action
+  - `byKey` computed — O(1) lookup
 
-7. **[MED] Attendance Report page**
-   - daily/monthly summary + CSV export
+#### 7. Backend: GET /auth/me endpoint
+- **ไฟล์:** `backend/app/api/auth.py`
+  - ตรวจ user ใน DB, ตรวจ `is_active`
+  - Return: `user_id, username, full_name, role, is_active, station_ids`
+  - 401 ถ้า user ถูกลบหรือ deactivate
+
+#### 8. Backend: JWT expire_hours configurable
+- **ไฟล์:** `backend/app/core/security.py`
+  - `create_access_token(..., expire_hours=None)` — ใช้ DB value แทน hardcoded
+- **ไฟล์:** `backend/app/api/auth.py` login endpoint
+  - อ่าน `access_token_expire_hours` จาก `system_settings` table
+- **ไฟล์:** `backend/main.py`
+  - เพิ่ม `access_token_expire_hours` ใน DEFAULT_SETTINGS seed
+
+#### 9. Backend: 13 unprotected endpoints hardened
+
+| ไฟล์ | Endpoint | ก่อน | หลัง |
+|------|---------|------|------|
+| departments.py | GET /departments | ❌ ไม่มี auth | ✅ require_hr |
+| departments.py | POST /departments | ❌ | ✅ require_admin |
+| departments.py | PUT /departments/{id} | ❌ | ✅ require_admin |
+| departments.py | DELETE /departments/{id} | ❌ | ✅ require_admin |
+| employees.py | GET /employees | ❌ | ✅ require_hr |
+| employees.py | POST /employees | ❌ | ✅ require_hr |
+| employees.py | GET /employees/{id} | ❌ | ✅ require_hr |
+| employees.py | PATCH /employees/{id} | ❌ | ✅ require_hr |
+| stations.py | GET /stations | ❌ | ✅ get_current_user |
+| stations.py | GET /stations/{id} | ❌ | ✅ get_current_user |
+| attendance.py | GET /attendance | ❌ | ✅ require_hr |
+| enrollment.py | GET /enrollment | ❌ | ✅ require_hr |
+| enrollment.py | POST /enroll | ❌ | ✅ require_hr |
+| enrollment.py | DELETE /enroll/{idx} | ❌ | ✅ require_hr |
+| shifts.py | GET /shifts | ❌ | ✅ require_hr |
+| shifts.py | POST /shifts | ❌ | ✅ require_admin |
+| shifts.py | DELETE /shifts/{id} | ❌ | ✅ require_admin |
+
+#### 10. Documentation
+- **ไฟล์ใหม่:** `doc/cluade_version/chapter_22_auth_authorization.md`
+  - 4 Mermaid sequence diagrams: Login Flow, Protected API Call, App Load/Session Restore, Logout Flow
+  - API Authorization Matrix (ทุก endpoint)
+  - Frontend Route Guard Matrix
+  - Auth Store SSOT design diagram
+  - Security Dependencies (backend)
+  - Known Limitations table
+
+### Bug ที่แก้
+| Bug | การแก้ไข |
+|-----|---------|
+| BUG-001: JWT token หมดอายุเร็ว | admin ตั้งค่า `access_token_expire_hours` ผ่าน Settings UI ได้ |
+
+### LoginView improvements
+- Banner "Your session has expired. Please sign in again." เมื่อ `?reason=expired`
+- Banner "Your account has been deactivated." เมื่อ `?reason=deactivated`
+- Better error messages จาก `e.response?.data?.detail`
+- Redirect กลับไปยัง `?redirect=` path หลัง login สำเร็จ
+
+---
+
+## Sprint 9 — Camera Backend + Pilot Console + Attendance Report ✅ DONE
+**วันที่:** 2026-05-17 (Session 6)
+**เป้าหมาย:** Multi-camera backend ครบ + Pilot Console UI + Monthly Attendance Report
+
+### สิ่งที่ทำ
+
+1. **Pilot Console View** — `frontend/src/views/PilotConsoleView.vue` (NEW)
+   - WebSocket ต่อ `/api/v1/ws/console?token=...` (ADMIN only)
+   - Camera tiles: status dot, FPS, frame count, pause/resume/disconnect
+   - Event feed: attendance_logged, unknown_face, camera_connected/disconnected
+   - Auto-reconnect (3s) เมื่อ connection drop
+   - Stats bar: cameras active/paused/offline, events today
+   - TransitionGroup animation สำหรับ event feed
+
+2. **Router + Sidebar** — เพิ่ม `/console` route (ADMIN only) + menu item "Pilot Console"
+
+3. **Attendance Summary API** — `GET /api/v1/attendance/summary?month=YYYY-MM&dept_id=N`
+   - Monthly totals: total_records, unique_employees
+   - by_day: 31 entries (filled) with count + unique_employees per day
+   - by_department: sorted by count desc
+   - Protected by `require_hr` dependency
+
+4. **AttendanceView rewrite** — 2 tabs
+   - **Logs tab**: existing table + date/dept filter + CSV export (เพิ่ม dept_name column)
+   - **Monthly Report tab**: KPI cards + CSS bar chart + dept breakdown + summary CSV export
+
+### Auth guard verification (all passed)
+| | No Token | OPERATOR | HR | ADMIN |
+|---|---|---|---|---|
+| /cameras | 401 ✅ | 403 ✅ | 200 ✅ | 200 ✅ |
+| /employees | 401 ✅ | 403 ✅ | 200 ✅ | 200 ✅ |
+| /stations | — | 200 ✅ | 200 ✅ | 200 ✅ |
+| /attendance | — | 403 ✅ | 200 ✅ | — |
+| /departments | — | 403 ✅ | 200 ✅ | — |
+| /users | — | — | 403 ✅ | 200 ✅ |
+| /settings | — | — | — | 200 ✅ |
+
+---
+
+## Sprint 10 — Multi-Camera Plug-and-Play ✅ DONE
+**วันที่:** 2026-05-18 (Session 7)  
+**เป้าหมาย:** รองรับกล้องทุกประเภท (Webcam, IP Camera, CCTV, Smartphone) ด้วย protocol เดียว + no conflict + best performance
+
+### สิ่งที่ทำ
+
+#### 1. WebSocket Handler Rewrite — `backend/app/api/websocket.py`
+Architecture: "One Protocol, Many Cameras" — ทุกกล้องใช้ binary JPEG เหมือนกัน
+
+**FPS Gate per Camera (Backend-side)**
+- `_last_processed: dict[str, float]` — timestamp ล่าสุดที่ process ต่อ camera_id
+- Frame ที่มาเร็วกว่า `1/max_fps` จะถูก drop ทันที (ไม่ queue) — ป้องกัน memory buildup
+- webcam ที่ส่ง 30 FPS จะถูก gate เหลือ 2 FPS โดยอัตโนมัติ
+
+**ThreadPoolExecutor (Non-blocking Face Inference)**
+```python
+_executor = ThreadPoolExecutor(max_workers=settings.inference_workers)
+# Face detection: CPU-bound ONNX → ไม่บล็อก event loop
+detections = await loop.run_in_executor(_executor, face_engine.get_detections, frame)
+# Qdrant search: synchronous client → ไม่บล็อก event loop
+results = await loop.run_in_executor(_executor, partial(qdrant.search, ...))
+```
+
+**Redis-Cached FPS Cap**
+```python
+async def _get_max_fps() -> float:
+    val = await _redis.get("setting:max_fps_per_camera")  # admin เปลี่ยนได้ realtime
+    return max(0.1, float(val)) if val else float(settings.max_fps_per_camera)
+```
+
+**camera_id Auto-generation** (ถ้า client ไม่ระบุ)
+```
+sm-{user_id[:6]}-{station_id[:6]}  # OPERATOR (smartphone)
+wc-{user_id[:6]}-{station_id[:6]}  # ADMIN/HR (webcam)
+```
+
+**FaceResult ครบ fields** — fix bug สำคัญ:
+- ก่อน: `hit.payload.get("full_name", "")` ← ไม่มีใน Qdrant payload (เสมอ `""`)
+- หลัง: JOIN `employees` + `departments` tables → populate `full_name`, `emp_code`, `dept_name`
+
+**Cleanup on disconnect:**
+```python
+_last_processed.pop(camera_id, None)  # ป้องกัน dict leak
+```
+
+#### 2. Config — `backend/app/core/config.py`
+- เพิ่ม `max_fps_per_camera: int = 2`
+- เพิ่ม `inference_workers: int = 2`
+
+#### 3. RTSP Agent — `backend/agents/rtsp_agent.py` (NEW)
+Standalone Python script ที่ bridge IP Camera/CCTV (RTSP) → OmniSight WebSocket
+
+**Features:**
+- Config via env vars: `RTSP_URL`, `STATION_ID`, `CAMERA_ID`, `OMNISIGHT_TOKEN`, `TARGET_FPS`, `JPEG_QUALITY`, `RESIZE_WIDTH`
+- `cv2.VideoCapture` + `CAP_PROP_BUFFERSIZE=1` (minimal latency)
+- Background `_listen()` async task สำหรับ pause/resume/set_fps/disconnect
+- `run_in_executor` สำหรับ `_encode_frame` — non-blocking JPEG encode
+- Auto-reconnect: RTSP reconnect 5s, WebSocket reconnect 3s
+- Accurate FPS: `sleep = max(0.0, min_interval - elapsed)`
+
+**ไฟล์ใหม่:** `backend/agents/.env.example` — template config พร้อม comments สำหรับ Hikvision/Dahua/Generic
+
+#### 4. MobileScanView — `frontend/src/views/MobileScanView.vue` (NEW)
+Full-screen smartphone web app สำหรับ OPERATOR ที่ gate
+
+**Features:**
+- `fixed inset-0 bg-black` — fullscreen, ไม่มี sidebar
+- `facingMode: 'environment'` — rear camera by default
+- Flip button (front/back)
+- Start/Stop large touch-friendly button
+- Handles all server control messages: pause/resume/set_fps/disconnect
+- BBox overlay ด้วย scaleX/scaleY (video vs canvas size mapping)
+- iOS safe area CSS: `pb-safe`, `top-safe` (env(safe-area-inset-*))
+- Frame count display + FPS counter (EMA)
+- WS status badge (Live/Connecting/Reconnecting/Offline)
+
+#### 5. Router + Sidebar — `frontend/src/router/index.js`, `AppLayout.vue`
+- `/mobile-scan` — standalone route (**ไม่** nested ใต้ AppLayout เพราะ fullscreen)
+- Mobile Scan menu item ใน sidebar (Operations section) — ทุก role เข้าได้
+- `meta: { title: 'Mobile Scan' }` — ไม่มี roles restriction (OPERATOR, HR, ADMIN ใช้ได้)
+
+#### 6. ScanView.vue Rewrite — `frontend/src/views/ScanView.vue`
+Critical bug fix + Pilot Console integration:
+- **TOKEN_KEY bug fix**: `localStorage.getItem('token')` → `import { TOKEN_KEY }` + `localStorage.getItem(TOKEN_KEY)` — กล้อง webcam จะเชื่อมต่อ WS ได้ถูกต้อง
+- Pause overlay (`<Transition name="fade">`) เมื่อรับ `{"action":"pause"}` จาก Pilot Console
+- FPS overlay บนวิดีโอ
+- BBox labels: `{name} {confidence}%` สำหรับ match, `Unknown` สำหรับ unknown
+- Modular: `_start`, `_stop`, `_startFrameLoop`, `_stopFrameLoop`, `_sendFrame`, `_drawBBoxes`
+- WS auto-reconnect (2s) ยกเว้น code 4001/4003
+
+### Performance Architecture Summary
+
+```
+Camera Type    → Protocol         → Backend Defense
+───────────────────────────────────────────────────────
+Webcam (2fps)  → WS Binary JPEG  → FPS gate + Thread pool
+IP Camera      → RTSP→WS agent   → FPS gate + Thread pool  
+Smartphone     → WS Binary JPEG  → FPS gate + Thread pool
+Multiple cams  → Concurrent WS   → asyncio event loop stays free
+```
+
+### ผลลัพธ์ที่ได้
+- N กล้องทำงาน parallel ได้ โดยไม่มี deadlock หรือ starvation
+- Admin เปลี่ยน FPS cap real-time (Redis write-through) ไม่ต้อง restart
+- ScanView แสดงชื่อ/รหัส/แผนก ของพนักงานที่ match ได้ถูกต้อง
+- MobileScan พร้อมใช้งานที่ `/mobile-scan` — เปิดบนมือถือได้เลย
+
+### Next Sprint (Sprint 11 / สิ่งที่ยังต้องทำ)
+1. **BUG-002** — Orphaned Qdrant vector reconcile script
+2. **Anti-spoofing** — MiniFASNet integration (Phase 2 AI)
+3. **Face quality gate** — ป้องกัน blur/dark ตอน enrollment
+4. **rtsp_agent Dockerfile** — สำหรับ deploy ใน production
+5. **GitHub push** — Sprint 9 + Sprint 10 (ต้องขออนุญาต user)
 
 ---
 
 ## Context สำหรับ AI Session ถัดไป
 
 เมื่อเริ่ม session ใหม่ให้อ่าน:
-1. `doc/project_management/PROJECT_STATUS.md` — ภาพรวม + phase progress (Phase 1-5)
-2. `doc/project_management/SPRINT_LOG.md` — Sprint 7 (attendance ✅), Sprint 8 (design ✅, impl TODO)
+1. `doc/project_management/PROJECT_STATUS.md` — ภาพรวม + phase progress (Phase 1-5 + Sprint 8)
+2. `doc/project_management/SPRINT_LOG.md` — Sprint 7 (attendance ✅), Sprint 8 (auth/security ✅)
 3. `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design ครบ
-4. `doc/project_management/DECISIONS_LOG.md` — ADR-009/010/011 (multi-camera decisions)
+4. `doc/cluade_version/chapter_22_auth_authorization.md` — Auth/Authz ครบ (seq diagrams + matrix)
+5. `doc/project_management/DECISIONS_LOG.md` — ADR-009/010/011 (multi-camera decisions)
 
 **⚠️ Path สำคัญ — ห้ามผิด:**
 | สิ่งของ | Path |
@@ -285,10 +515,26 @@ Sprint 7 attendance auto-logging: COMPLETE
 - DB migration: `migrate.bat upgrade`
 - Services: Docker → PostgreSQL (5432), Qdrant (6333), Redis (6379)
 
-**State ปัจจุบัน:**
+**State ปัจจุบัน (Sprint 8 done):**
 - emp1 (db421a76): enrolled 6/6 slots ✅
 - emp2 (848449d0): enrolled 0/6
 - sta1 (ccd829a0): ไม่มี dept filter
 - attendance_logs: 2 records (Sprint 7 verified)
 - Qdrant: 7 vectors (6 จริง + 1 orphaned, BUG-002 open)
-- GitHub: https://github.com/idev006/OmniSight (commit 6bb79e9)
+- GitHub: https://github.com/idev006/OmniSight (commit 6bb79e9, ยังไม่ push Sprint 8)
+- Users: admin (ADMIN), hr1 (HR), operator1 (OPERATOR) — bcrypt hashed
+
+**Auth Architecture (Sprint 8):**
+- Frontend SSOT: `auth.js` Pinia store — token expiry computed, no stale state
+- localStorage key: `omnisight-token` (legacy `token` key cleaned on init)
+- 401 interceptor: redirect `/login?reason=expired` หรือ `/login?reason=deactivated`
+- Backend: 17 endpoints ทั้งหมดมี `Depends(require_hr/require_admin/get_current_user)` แล้ว
+- JWT expire: admin ตั้งค่าได้ผ่าน /settings → Security → access_token_expire_hours
+
+**งานถัดไป (Sprint 9):**
+1. Camera model + CRUD API (cameras table, /api/v1/cameras)
+2. WebSocket อัพเดทรับ camera_id
+3. CameraManager service + Redis Pub/Sub
+4. BUG-002: Orphaned Qdrant vector reconcile
+
+**⚠️ GitHub push policy:** ต้องขออนุญาต user ก่อนทุกครั้ง — ห้าม push โดยไม่บอก

@@ -62,8 +62,9 @@
     </div>
 
     <!-- ── Table (sm+) ───────────────────────────────────────────── -->
-    <div class="hidden sm:block bg-base-100 rounded-2xl border border-base-300 overflow-hidden">
-      <div class="overflow-x-auto">
+    <!-- overflow-visible required — overflow-hidden clips DaisyUI dropdowns -->
+    <div class="hidden sm:block bg-base-100 rounded-2xl border border-base-300">
+      <div class="overflow-x-auto rounded-2xl">
         <table class="table table-sm">
           <thead class="bg-base-200/60">
             <tr>
@@ -104,8 +105,8 @@
               </td>
               <!-- Actions cell -->
               <td v-if="actions.length" class="text-right">
-                <!-- 1-2 actions: inline buttons -->
-                <div v-if="visibleActions(row).length <= 2" class="flex gap-1 justify-end">
+                <!-- 1-3 actions: inline buttons -->
+                <div v-if="visibleActions(row).length <= 3" class="flex gap-1 justify-end">
                   <button
                     v-for="act in visibleActions(row)"
                     :key="act.label"
@@ -118,20 +119,26 @@
                     {{ act.label }}
                   </button>
                 </div>
-                <!-- 3+ actions: dropdown -->
-                <div v-else class="dropdown dropdown-end">
-                  <div tabindex="0" role="button" class="btn btn-xs btn-ghost btn-circle">
+                <!-- 4+ actions: click-toggled dropdown -->
+                <div v-else class="relative" v-click-outside="() => openDropdown = null">
+                  <button
+                    class="btn btn-xs btn-ghost btn-circle"
+                    @click.stop="openDropdown = openDropdown === rowKey(row) ? null : rowKey(row)"
+                  >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                       <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
                     </svg>
-                  </div>
-                  <ul tabindex="0" class="dropdown-content z-50 menu menu-xs shadow-xl bg-base-100 rounded-xl border border-base-300 w-40 p-1">
-                    <li v-for="act in visibleActions(row)" :key="act.label">
+                  </button>
+                  <ul
+                    v-if="openDropdown === rowKey(row)"
+                    class="absolute right-0 z-[100] mt-1 w-40 bg-base-100 border border-base-300 rounded-xl shadow-xl p-1 flex flex-col"
+                  >
+                    <li v-for="act in visibleActions(row)" :key="act.label" class="list-none">
                       <button
-                        class="text-sm"
+                        class="w-full text-left text-sm px-3 py-1.5 rounded-lg hover:bg-base-200 transition-colors"
                         :class="act.class"
                         :disabled="act.disabled ? act.disabled(row) : false"
-                        @click.stop="act.handler(row)"
+                        @click.stop="act.handler(row); openDropdown = null"
                       >{{ act.label }}</button>
                     </li>
                   </ul>
@@ -199,8 +206,8 @@
         <template v-else>No records</template>
       </div>
 
-      <!-- Page buttons -->
-      <div v-if="totalPages > 1" class="join">
+      <!-- Page buttons — always visible, buttons disable when only 1 page -->
+      <div class="join">
         <!-- First + Prev -->
         <button class="join-item btn btn-xs btn-ghost" :disabled="page <= 1" @click="goPage(1)" title="First">
           «
@@ -236,6 +243,19 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+
+// Click-outside directive for closing the dropdown
+const vClickOutside = {
+  mounted(el, binding) {
+    el._clickOutside = (e) => { if (!el.contains(e.target)) binding.value(e) }
+    document.addEventListener('click', el._clickOutside)
+  },
+  unmounted(el) {
+    document.removeEventListener('click', el._clickOutside)
+  },
+}
+
+const openDropdown = ref(null)
 
 const props = defineProps({
   columns:           { type: Array,   required: true },

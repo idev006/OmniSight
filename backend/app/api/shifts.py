@@ -4,18 +4,26 @@ from sqlalchemy import select
 from app.db.postgres import get_db
 from app.models.orm import Shift
 from app.models.schemas import ShiftCreate, ShiftOut
+from app.core.security import require_hr, require_admin, CurrentUser
 
 router = APIRouter()
 
 
 @router.get("", response_model=list[ShiftOut])
-async def list_shifts(db: AsyncSession = Depends(get_db)):
+async def list_shifts(
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
     result = await db.execute(select(Shift).order_by(Shift.id))
     return result.scalars().all()
 
 
 @router.post("", response_model=ShiftOut, status_code=201)
-async def create_shift(body: ShiftCreate, db: AsyncSession = Depends(get_db)):
+async def create_shift(
+    body: ShiftCreate,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_admin),
+):
     shift = Shift(**body.model_dump())
     db.add(shift)
     await db.commit()
@@ -24,7 +32,11 @@ async def create_shift(body: ShiftCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/{shift_id}", status_code=204)
-async def delete_shift(shift_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_shift(
+    shift_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_admin),
+):
     shift = await db.get(Shift, shift_id)
     if not shift:
         raise HTTPException(404, "Shift not found")

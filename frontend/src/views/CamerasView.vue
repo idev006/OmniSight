@@ -247,8 +247,10 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api/client'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 
 const toast = useToast()
+const { confirm } = useConfirm()
 
 const cameras      = ref([])
 const stations     = ref([])
@@ -371,7 +373,7 @@ async function resumeCamera(cam) {
 }
 
 async function deleteCamera(cam) {
-  if (!confirm(`Delete camera "${cam.name}"?`)) return
+  if (!await confirm(`Delete camera "${cam.name}"?`, { title: 'Delete Camera', confirmLabel: 'Delete' })) return
   try {
     await api.delete(`/api/v1/cameras/${cam.id}`)
     toast.success(`Camera "${cam.name}" deleted`)

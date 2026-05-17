@@ -210,10 +210,12 @@ import { ref, computed, onMounted } from 'vue'
 import api from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import DataTable from '@/components/DataTable.vue'
 
 const authStore = useAuthStore()
 const toast     = useToast()
+const { confirm } = useConfirm()
 
 // ── Data ──────────────────────────────────────────────────────────
 const allUsers = ref([])
@@ -364,7 +366,7 @@ async function saveStations() {
 }
 
 async function deleteUser(u) {
-  if (!confirm(`Delete user "${u.username}"? This cannot be undone.`)) return
+  if (!await confirm(`Delete user "${u.username}"? This cannot be undone.`, { title: 'Delete User', confirmLabel: 'Delete' })) return
   try {
     await api.delete(`/api/v1/users/${u.id}`)
     toast.success(`User "${u.username}" deleted`)

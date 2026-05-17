@@ -6,13 +6,17 @@ from app.db.postgres import get_db
 from app.models.orm import Station, StationDepartment
 from app.models.schemas import StationCreate, StationOut, StationDeptUpdate
 from app.db.redis import set_station_filter, delete_station_filter
+from app.core.security import get_current_user, require_admin, CurrentUser
 import uuid
 
 router = APIRouter()
 
 
 @router.get("", response_model=list[StationOut])
-async def list_stations(db: AsyncSession = Depends(get_db)):
+async def list_stations(
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),   # all authenticated users (OPERATOR needs for scan)
+):
     result = await db.execute(
         select(Station)
         .options(selectinload(Station.station_departments))
@@ -22,7 +26,11 @@ async def list_stations(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=StationOut, status_code=201)
-async def create_station(body: StationCreate, db: AsyncSession = Depends(get_db)):
+async def create_station(
+    body: StationCreate,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_admin),
+):
     station = Station(**body.model_dump())
     db.add(station)
     await db.commit()
@@ -31,7 +39,11 @@ async def create_station(body: StationCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/{station_id}", response_model=StationOut)
-async def get_station(station_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_station(
+    station_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),
+):
     result = await db.execute(
         select(Station)
         .options(selectinload(Station.station_departments))
@@ -48,6 +60,7 @@ async def update_station_departments(
     station_id: uuid.UUID,
     body: StationDeptUpdate,
     db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_admin),
 ):
     result = await db.execute(
         select(Station)

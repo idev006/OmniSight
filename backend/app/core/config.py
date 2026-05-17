@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     match_threshold: float = 0.72
     min_templates_to_activate: int = 6
 
+    # Multi-Camera performance
+    max_fps_per_camera: int = 2       # Backend-side FPS gate per camera connection
+    inference_workers: int = 2         # Thread pool size for face engine (CPU-bound)
+
     class Config:
         env_file = ".env"
         case_sensitive = False

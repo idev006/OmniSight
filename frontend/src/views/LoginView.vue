@@ -74,6 +74,14 @@
             />
           </label>
 
+          <!-- Session expired / deactivated banner -->
+          <div v-if="sessionMessage" role="alert" class="alert alert-warning py-2.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span class="text-sm">{{ sessionMessage }}</span>
+          </div>
+
           <!-- Error alert -->
           <div v-if="error" role="alert" class="alert alert-error py-2.5">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -101,28 +109,39 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, THEMES } from '@/stores/theme'
 
-const router    = useRouter()
-const auth      = useAuthStore()
+const router     = useRouter()
+const route      = useRoute()
+const auth       = useAuthStore()
 const themeStore = useThemeStore()
-const themes    = THEMES
+const themes     = THEMES
 
 const form    = ref({ username: '', password: '' })
 const error   = ref('')
 const loading = ref(false)
+
+// Session reason message (from ?reason= query param set by router/interceptor)
+const sessionMessage = computed(() => {
+  const r = route.query.reason
+  if (r === 'expired')     return 'Your session has expired. Please sign in again.'
+  if (r === 'deactivated') return 'Your account has been deactivated. Contact an administrator.'
+  return ''
+})
 
 async function handleLogin() {
   error.value = ''
   loading.value = true
   try {
     await auth.login(form.value.username, form.value.password)
-    router.push('/scan')
-  } catch {
-    error.value = 'Invalid username or password'
+    // Redirect to originally requested page (if any) or default to scan
+    const redirect = route.query.redirect
+    router.replace(typeof redirect === 'string' ? redirect : '/scan')
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Invalid username or password'
   } finally {
     loading.value = false
   }
