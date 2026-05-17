@@ -1,8 +1,8 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-17  
+> **อัปเดตล่าสุด:** 2026-05-17 (Sprint 7 done)  
 > **Project Manager / Lead Dev:** idev006  
-> **AI Pair:** Claude Sonnet 4.5  
+> **AI Pair:** Claude Sonnet 4.6  
 > **Repository:** https://github.com/idev006/OmniSight  
 
 ---
@@ -11,7 +11,7 @@
 
 ```
 Phase 1 — Foundation     ████████████████████ 100%  ✅ DONE
-Phase 2 — AI Core        ████░░░░░░░░░░░░░░░░  20%  🔄 IN PROGRESS
+Phase 2 — AI Core        ████████░░░░░░░░░░░░  40%  🔄 IN PROGRESS
 Phase 3 — HR Features    ░░░░░░░░░░░░░░░░░░░░   0%  ⏳ PENDING
 Phase 4 — Production     ░░░░░░░░░░░░░░░░░░░░   0%  ⏳ PENDING
 ```
@@ -46,6 +46,7 @@ Phase 4 — Production     ░░░░░░░░░░░░░░░░░�
 | 1.20 | End-to-end test: Enrollment | ✅ Done | 2026-05-17 | 6/6 slots, quality=0.799 |
 | 1.21 | End-to-end test: WebSocket scan | ✅ Done | 2026-05-17 | confidence=99.57%, match ถูกต้อง |
 | 1.22 | GitHub push | ✅ Done | 2026-05-17 | 72 files, pip freeze locked |
+| 1.23 | GitHub push (Sprint 7) | ✅ Done | 2026-05-17 | commit dac4ab2, requirements.txt updated |
 
 ---
 
@@ -55,8 +56,8 @@ Phase 4 — Production     ░░░░░░░░░░░░░░░░░�
 
 | # | งาน | สถานะ | Priority | หมายเหตุ |
 |---|-----|--------|----------|---------|
-| 2.1 | Attendance auto-logging เมื่อ scan match | ⬜ Todo | 🔴 HIGH | ยังไม่ได้ INSERT AttendanceLog |
-| 2.2 | Cooldown ป้องกัน log ซ้ำ (≤5 นาที) | ⬜ Todo | 🔴 HIGH | ใช้ Redis TTL key |
+| 2.1 | Attendance auto-logging เมื่อ scan match | ✅ Done | 🔴 HIGH | Sprint 7: INSERT + service layer |
+| 2.2 | Cooldown ป้องกัน log ซ้ำ (≤5 นาที) | ✅ Done | 🔴 HIGH | Sprint 7: Redis TTL 300s verified |
 | 2.3 | JWT refresh token / expiry ยาวขึ้น | ⬜ Todo | 🔴 HIGH | ตอนนี้ token หมดเร็วเกินไป |
 | 2.4 | Anti-spoofing MiniFASNet | ⬜ Todo | 🟡 MED | เพิ่มหลัง attendance log เสร็จ |
 | 2.5 | Face quality gate ก่อน enrollment | ⬜ Todo | 🟡 MED | reject blur/dark images |
@@ -124,8 +125,10 @@ Phase 4 — Production     ░░░░░░░░░░░░░░░░░�
 
 | Metric | ค่าที่ได้ | เป้าหมาย |
 |--------|----------|---------|
-| Face detection confidence | 99.57% | ≥ 72% |
+| Face detection confidence | 99.76% | ≥ 72% |
 | Enrollment quality score | 0.799 | ≥ 0.75 |
-| WebSocket round-trip | ~1 วินาที/frame (CPU) | < 500ms (GPU) |
+| WebSocket round-trip | ~10s (cold) / <2s (warm) CPU | < 500ms (GPU) |
+| Attendance log insert | ✅ verified (DB: +1 record) | — |
+| Cooldown ป้องกัน duplicate | ✅ verified (2nd scan: logged=False) | 5 min |
 | Qdrant collection status | 🟢 green | green |
 | API health | ✅ all endpoints 200 | — |

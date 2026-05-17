@@ -140,47 +140,110 @@
 
 ---
 
-## Sprint 7 — Next (TODO)
-**เป้าหมาย:** Phase 2 เริ่ม
+## Sprint 7 — Attendance Auto-Logging ✅ DONE
+**วันที่:** 2026-05-17 (Session 4)  
+**เป้าหมาย:** บันทึก attendance เมื่อ scan match + cooldown ป้องกัน log ซ้ำ
+
+### สิ่งที่ทำ
+
+1. **`backend/app/db/redis.py`** — เพิ่ม cooldown functions
+   - `check_attendance_cooldown(employee_id, station_id)` — ตรวจ Redis key
+   - `set_attendance_cooldown(employee_id, station_id)` — ตั้ง TTL 300s
+   - เพิ่ม try/except + fallback สำหรับกรณี Redis ล่ม
+
+2. **`backend/app/services/attendance_service.py`** — NEW FILE
+   - `log_attendance(db, employee_id, station_id, confidence_score)` → bool
+   - Flow: check cooldown → INSERT AttendanceLog → set cooldown → return True/False
+   - rollback on exception
+
+3. **`backend/app/api/websocket.py`** — FULL REWRITE
+   - ใช้ `async with async_session_factory() as db:` สำหรับ DB session
+   - เรียก `log_attendance()` ทุกครั้งที่ Qdrant match
+   - ส่ง `attendance_logged` field ใน FaceResult
+
+4. **`backend/app/db/postgres.py`** — เพิ่ม alias
+   - `async_session_factory = AsyncSessionLocal` สำหรับใช้นอก FastAPI DI
+
+5. **`backend/app/models/schemas.py`** — เพิ่ม field
+   - `attendance_logged: bool = False` ใน FaceResult
+
+6. **`backend/test_sprint7_attendance.py`** — Test script
+   - ยืนยัน match, DB insert, cooldown ครบ
+
+### ผลการทดสอบ (test_sprint7_attendance.py)
+
+```
+[OK] Token acquired
+[OK] Face matched!
+     - Status: match
+     - Confidence: 0.9976 (99.76%)
+     - attendance_logged: True
+[OK] 1 new attendance log inserted in DB (1 -> 2)
+[OK] Cooldown working — second scan not logged (attendance_logged: False)
+Sprint 7 attendance auto-logging: COMPLETE
+```
+
+### GitHub
+- Commit: `dac4ab2` — feat(sprint7): attendance auto-logging with Redis cooldown
+- Push: origin/master
+
+---
+
+## Sprint 8 — Next (TODO)
+**เป้าหมาย:** User Management + Authorization
 
 ### งานที่ต้องทำถัดไป (ลำดับความสำคัญ)
 
-1. **[HIGH] Attendance auto-logging**
-   - ไฟล์: `backend/app/api/websocket.py`
-   - เมื่อ Qdrant search match → INSERT AttendanceLog
-   - ใช้ Redis TTL (`attendance:{emp_id}:{date}`) ป้องกัน log ซ้ำใน 5 นาที
+1. **[HIGH] User Management + RBAC**
+   - สร้าง `users` table: id, username, hashed_password, role (ADMIN/HR/OPERATOR)
+   - สร้าง `user_stations` table: user_id, station_id (OPERATOR access control)
+   - `/api/v1/users` CRUD endpoints
+   - bcrypt password hashing แทน hardcoded admin/admin
 
-2. **[HIGH] JWT expiry fix**
-   - ไฟล์: `backend/app/api/auth.py`, `backend/.env`
-   - เพิ่ม `ACCESS_TOKEN_EXPIRE_HOURS=8` (ปัจจุบันน้อยกว่านี้)
+2. **[HIGH] WebSocket station authorization**
+   - ตรวจสอบ JWT token จริง (ตอนนี้แค่ไม่ว่าง)
+   - OPERATOR ต้องมี station_id ใน JWT claims หรือ user_stations table
+   - ปฏิเสธ connection ถ้า user ไม่มีสิทธิ์ใช้ station นั้น
+
+3. **[HIGH] JWT fix (BUG-001)**
+   - เพิ่ม `ACCESS_TOKEN_EXPIRE_HOURS=8` ใน config
    - หรือเพิ่ม refresh token endpoint
 
-3. **[HIGH] Clean orphaned Qdrant vector**
-   - BUG-002: มี 7 vectors แทนที่จะเป็น 6
-   - รัน script ลบ point ที่ไม่มีใน FaceTemplate table
+4. **[MED] BUG-002: Orphaned Qdrant vector**
+   - เขียน reconcile script: ลบ Qdrant points ที่ไม่มีใน face_templates table
 
-4. **[MED] Face quality gate**
-   - ไฟล์: `backend/app/api/enrollment.py`
-   - ก่อน save: check `quality_score >= MIN_FACE_QUALITY`
-   - ตอบ 422 พร้อม message ถ้าคุณภาพต่ำเกินไป
+5. **[MED] Attendance Report page**
+   - Frontend: daily/monthly summary
+   - Backend: aggregate query (GROUP BY date/dept)
+   - Export CSV button
 
-5. **[MED] Anti-spoofing**
-   - ไฟล์: `backend/app/core/face_engine.py`
-   - เพิ่ม MiniFASNet model
-   - เรียกก่อน embedding extraction
+6. **[MED] Face quality gate ก่อน enrollment**
+   - Reject ถ้า quality_score < 0.6
+
+7. **[LOW] Camera agent (RTSP bridge)**
+   - `camera_agent.py`: RTSP → JPEG → WebSocket
+   - รองรับ IP camera / CCTV
 
 ---
 
 ## Context สำหรับ AI Session ถัดไป
 
 เมื่อเริ่ม session ใหม่ให้อ่าน:
-1. `doc/project_management/PROJECT_STATUS.md` — ภาพรวม
-2. `doc/project_management/SPRINT_LOG.md` — สิ่งที่ทำล่าสุด (Sprint นี้)
-3. `backend/app/api/websocket.py` — จุดที่ต้องแก้ถัดไป (attendance logging)
-4. `backend/app/api/auth.py` — JWT fix
+1. `doc/project_management/PROJECT_STATUS.md` — ภาพรวม + phase progress
+2. `doc/project_management/SPRINT_LOG.md` — Sprint 7 done, Sprint 8 TODO
+3. `backend/app/api/auth.py` — JWT (ตอนนี้ hardcoded admin/admin)
+4. `backend/app/api/websocket.py` — WebSocket scan (attendance logging สมบูรณ์แล้ว)
 
 **Environment:**
 - venv: `F:\programming\python\OmniSight\my_env`
-- Backend start: `start-backend.bat`
+- Backend start: `start-backend.bat` (uvicorn ที่ port 8000)
 - DB migration: `migrate.bat upgrade`
-- Services: Docker Desktop → Qdrant (6333), Redis (6379), PostgreSQL (5432)
+- Services: Docker Desktop → PostgreSQL (5432), Qdrant (6333), Redis (6379)
+- Test script: `backend/test_sprint7_attendance.py`
+
+**State ปัจจุบัน:**
+- emp1 (db421a76): enrolled 6/6 slots ✅
+- emp2 (848449d0): enrolled 0/6
+- sta1 (ccd829a0): ไม่มี dept filter (scan พนักงานทุกคน)
+- attendance_logs: 2 records (emp1 + sta1, 2026-05-17)
+- Qdrant: 7 vectors (6 จริง + 1 orphaned จาก BUG-002)
