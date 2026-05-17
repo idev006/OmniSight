@@ -42,7 +42,44 @@ UI เปลี่ยน state ทันทีที่ user กระทำ —
 
 ---
 
-## III. แนวคิด Multi-Camera — "1 กล้อง 1 ชีวิต"
+## III. Mental Model — "The Octopus Architecture"
+
+> **OmniSight คือปลาหมึก — ไม่ใช่แมงมุม**
+
+```
+                        🧠 Central Brain
+                      (Backend + PostgreSQL)
+                      SSOT · CameraManager
+                      Redis Pub/Sub · Qdrant
+                             │
+            ┌────────────────┼────────────────┐
+            │                │                │
+          🦑 Arm 1         🦑 Arm 2         🦑 Arm N
+        WebCam WS        IP Cam WS        Smartphone WS
+      (semi-independent, each with own lifecycle)
+            │                │                │
+         👁 Sucker        👁 Sucker        👁 Sucker
+       FaceEngine       FaceEngine       FaceEngine
+      (detects locally, reports to brain)
+```
+
+**ทำไมถึงเหมือนปลาหมึก ไม่ใช่แมงมุม:**
+
+| ปลาหมึก (OmniSight) | แมงมุม (ระบบทั่วไป) |
+|---------------------|---------------------|
+| แต่ละแขนมีระบบประสาทของตัวเอง — ทำงานแบบ semi-independent | ทุกอย่างต้องผ่านศูนย์กลาง — single point of failure |
+| ตัดแขนหนึ่งออก ยังมีชีวิต (fault isolation) | เส้นใยขาดเส้นเดียว — เครือข่ายพัง |
+| สมองกลางรับรู้ทุก arm พร้อมกัน (Pilot Console) | ต้องวิ่งไปถามทีละตัว |
+| ปรับตัวเองได้ real-time (เปลี่ยนสี = live config) | ต้อง restart เพื่อเปลี่ยนพฤติกรรม |
+| แขนใหม่ต่อได้ทันที (hot plug) | เพิ่มอุปกรณ์ต้อง reconfigure ระบบ |
+| Ink = defense mechanism (conflict management) | ไม่มีแผนเมื่อถูกโจมตี |
+
+> *"แต่ละกล้องคือแขน — มีชีวิตของตัวเอง รายงานกลับสมองกลาง  
+> สมองไม่ต้องรู้ว่าแขนแต่ละข้างทำงานยังไง — รู้แค่ว่าเห็นอะไร"*
+
+---
+
+## IV. แนวคิด Multi-Camera — "1 กล้อง 1 ชีวิต"
 
 กล้องแต่ละตัวคือ independent entity — มี lifecycle ของตัวเอง  
 1 WebSocket connection ต่อ 1 กล้อง → fault isolation ตามธรรมชาติ  
