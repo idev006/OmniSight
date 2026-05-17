@@ -189,8 +189,47 @@ Sprint 7 attendance auto-logging: COMPLETE
 
 ---
 
-## Sprint 8 — Next (TODO)
-**เป้าหมาย:** User Management + Authorization
+## Sprint 8 — Multi-Camera Architecture Design ✅ DONE (Design)
+**วันที่:** 2026-05-17 (Session 4 ต่อ)  
+**เป้าหมาย:** ออกแบบสถาปัตยกรรมรองรับกล้องหลายตัว + Pilot Console
+
+### สิ่งที่ทำ
+
+1. **`doc/claude_version/chapter_17_multi_camera_pilot_console.md`** — NEW
+   - Architecture diagram (Mermaid) — Camera sources → Edge Agents → Backend → Storage
+   - WebSocket Protocol v2 (camera_id parameter, bidirectional control)
+   - `cameras` table schema
+   - Redis state management pattern
+   - `rtsp_agent.py` — sample code สำหรับ IP Camera/CCTV agent
+   - Smartphone mobile web app design + stream toggle protocol
+   - Pilot Console UI wireframe ("Pilot Console" concept)
+   - `CameraManager` service design + Camera state machine (Mermaid)
+   - Implementation plan Sprint 8-10
+   - Security considerations
+   - Scalability notes
+
+2. **`doc/project_management/DECISIONS_LOG.md`** — เพิ่ม ADR
+   - ADR-009: Multi-Camera (1 WebSocket per camera) vs multiplex
+   - ADR-010: Redis Pub/Sub เป็น event bus
+   - ADR-011: Bidirectional WS control สำหรับ smartphone
+
+3. **`doc/project_management/PROJECT_STATUS.md`** — อัพเดท
+   - เพิ่ม Phase 4: Multi-Camera & Pilot Console (17 tasks, 3 sprints)
+   - Phase 5: Production (เปลี่ยนจาก Phase 4)
+
+### Key Decisions
+
+| เรื่อง | การตัดสินใจ |
+|-------|------------|
+| Camera connection model | 1 WebSocket per camera (fault isolation) |
+| Event distribution | Redis Pub/Sub → Pilot Console |
+| Smartphone control | Bidirectional WS control messages |
+| UI paradigm | Pilot Console (Control Tower concept) |
+
+---
+
+## Sprint 8 — Implementation (Next TODO)
+**เป้าหมาย:** User Management + RBAC (ต้องทำก่อน multi-camera)
 
 ### งานที่ต้องทำถัดไป (ลำดับความสำคัญ)
 
@@ -203,47 +242,45 @@ Sprint 7 attendance auto-logging: COMPLETE
 2. **[HIGH] WebSocket station authorization**
    - ตรวจสอบ JWT token จริง (ตอนนี้แค่ไม่ว่าง)
    - OPERATOR ต้องมี station_id ใน JWT claims หรือ user_stations table
-   - ปฏิเสธ connection ถ้า user ไม่มีสิทธิ์ใช้ station นั้น
 
 3. **[HIGH] JWT fix (BUG-001)**
    - เพิ่ม `ACCESS_TOKEN_EXPIRE_HOURS=8` ใน config
-   - หรือเพิ่ม refresh token endpoint
 
-4. **[MED] BUG-002: Orphaned Qdrant vector**
-   - เขียน reconcile script: ลบ Qdrant points ที่ไม่มีใน face_templates table
+4. **[HIGH] Camera model + CRUD API** (Phase 4 เริ่ม)
+   - `cameras` table + migration
+   - `/api/v1/cameras` CRUD
+   - อัพเดท WebSocket รับ `camera_id`
 
-5. **[MED] Attendance Report page**
-   - Frontend: daily/monthly summary
-   - Backend: aggregate query (GROUP BY date/dept)
-   - Export CSV button
+5. **[HIGH] CameraManager + Redis Pub/Sub**
+   - `services/camera_manager.py`
+   - `/ws/console` — Pilot Console WebSocket
 
-6. **[MED] Face quality gate ก่อน enrollment**
-   - Reject ถ้า quality_score < 0.6
+6. **[MED] BUG-002: Orphaned Qdrant vector**
+   - reconcile script
 
-7. **[LOW] Camera agent (RTSP bridge)**
-   - `camera_agent.py`: RTSP → JPEG → WebSocket
-   - รองรับ IP camera / CCTV
+7. **[MED] Attendance Report page**
+   - daily/monthly summary + CSV export
 
 ---
 
 ## Context สำหรับ AI Session ถัดไป
 
 เมื่อเริ่ม session ใหม่ให้อ่าน:
-1. `doc/project_management/PROJECT_STATUS.md` — ภาพรวม + phase progress
-2. `doc/project_management/SPRINT_LOG.md` — Sprint 7 done, Sprint 8 TODO
-3. `backend/app/api/auth.py` — JWT (ตอนนี้ hardcoded admin/admin)
-4. `backend/app/api/websocket.py` — WebSocket scan (attendance logging สมบูรณ์แล้ว)
+1. `doc/project_management/PROJECT_STATUS.md` — ภาพรวม + phase progress (Phase 1-5)
+2. `doc/project_management/SPRINT_LOG.md` — Sprint 7 (attendance ✅), Sprint 8 (design ✅, impl TODO)
+3. `doc/claude_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design ครบ
+4. `doc/project_management/DECISIONS_LOG.md` — ADR-009/010/011 (multi-camera decisions)
 
 **Environment:**
 - venv: `F:\programming\python\OmniSight\my_env`
-- Backend start: `start-backend.bat` (uvicorn ที่ port 8000)
+- Backend start: `start-backend.bat` (uvicorn port 8000)
 - DB migration: `migrate.bat upgrade`
-- Services: Docker Desktop → PostgreSQL (5432), Qdrant (6333), Redis (6379)
-- Test script: `backend/test_sprint7_attendance.py`
+- Services: Docker → PostgreSQL (5432), Qdrant (6333), Redis (6379)
 
 **State ปัจจุบัน:**
 - emp1 (db421a76): enrolled 6/6 slots ✅
 - emp2 (848449d0): enrolled 0/6
-- sta1 (ccd829a0): ไม่มี dept filter (scan พนักงานทุกคน)
-- attendance_logs: 2 records (emp1 + sta1, 2026-05-17)
-- Qdrant: 7 vectors (6 จริง + 1 orphaned จาก BUG-002)
+- sta1 (ccd829a0): ไม่มี dept filter
+- attendance_logs: 2 records (Sprint 7 verified)
+- Qdrant: 7 vectors (6 จริง + 1 orphaned, BUG-002 open)
+- GitHub: https://github.com/idev006/OmniSight (commit 51d1a22)

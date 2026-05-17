@@ -13,7 +13,8 @@
 Phase 1 — Foundation     ████████████████████ 100%  ✅ DONE
 Phase 2 — AI Core        ████████░░░░░░░░░░░░  40%  🔄 IN PROGRESS
 Phase 3 — HR Features    ░░░░░░░░░░░░░░░░░░░░   0%  ⏳ PENDING
-Phase 4 — Production     ░░░░░░░░░░░░░░░░░░░░   0%  ⏳ PENDING
+Phase 4 — Multi-Camera   ░░░░░░░░░░░░░░░░░░░░   0%  📐 DESIGNED
+Phase 5 — Production     ░░░░░░░░░░░░░░░░░░░░   0%  ⏳ PENDING
 ```
 
 ---
@@ -81,19 +82,57 @@ Phase 4 — Production     ░░░░░░░░░░░░░░░░░�
 
 ---
 
-## Phase 4 — Production ⏳ PENDING
+## Phase 4 — Multi-Camera & Pilot Console 📐 DESIGNED
+
+**เป้าหมาย:** รองรับกล้องทุกประเภท + ศูนย์ควบคุม Pilot Console
+
+> Architecture Design เสร็จแล้วใน `doc/claude_version/chapter_17_multi_camera_pilot_console.md`  
+> ADR-009, ADR-010, ADR-011 บันทึกใน `DECISIONS_LOG.md`
+
+### Sprint 8 — Camera Model + Manager
+| # | งาน | สถานะ | Priority |
+|---|-----|--------|----------|
+| 4.1 | `cameras` table + Alembic migration | ⬜ Todo | 🔴 HIGH |
+| 4.2 | Camera CRUD API (`/api/v1/cameras`) | ⬜ Todo | 🔴 HIGH |
+| 4.3 | อัพเดท WebSocket: รับ `camera_id` parameter | ⬜ Todo | 🔴 HIGH |
+| 4.4 | `CameraManager` service (Redis state) | ⬜ Todo | 🔴 HIGH |
+| 4.5 | Pilot Console WebSocket (`/ws/console`) | ⬜ Todo | 🔴 HIGH |
+| 4.6 | Redis Pub/Sub event bus | ⬜ Todo | 🔴 HIGH |
+
+### Sprint 9 — RTSP Agent + Mobile
+| # | งาน | สถานะ | Priority |
+|---|-----|--------|----------|
+| 4.7 | `rtsp_agent.py` — IP Camera / CCTV bridge | ⬜ Todo | 🔴 HIGH |
+| 4.8 | Docker image สำหรับ RTSP Agent | ⬜ Todo | 🟡 MED |
+| 4.9 | `MobileScan.vue` — Smartphone web app | ⬜ Todo | 🔴 HIGH |
+| 4.10 | Pause/Resume control (server → smartphone) | ⬜ Todo | 🟡 MED |
+| 4.11 | Smartphone authorization (user_stations) | ⬜ Todo | 🟡 MED |
+
+### Sprint 10 — Pilot Console UI
+| # | งาน | สถานะ | Priority |
+|---|-----|--------|----------|
+| 4.12 | `PilotConsole.vue` — camera grid layout | ⬜ Todo | 🔴 HIGH |
+| 4.13 | `CameraTile.vue` — live thumbnail + controls | ⬜ Todo | 🔴 HIGH |
+| 4.14 | `EventFeed.vue` — live attendance events | ⬜ Todo | 🔴 HIGH |
+| 4.15 | `AttendanceStats.vue` — present/absent/late | ⬜ Todo | 🟡 MED |
+| 4.16 | `StationTree.vue` — station / camera tree | ⬜ Todo | 🟢 LOW |
+| 4.17 | Camera config modal (add RTSP URL, set FPS) | ⬜ Todo | 🟡 MED |
+
+---
+
+## Phase 5 — Production ⏳ PENDING
 
 **เป้าหมาย:** ระบบพร้อม deploy จริง
 
 | # | งาน | สถานะ | Priority |
 |---|-----|--------|----------|
-| 4.1 | Docker production compose (nginx + SSL) | ⬜ Todo | 🔴 HIGH |
-| 4.2 | Strong SECRET_KEY + env hardening | ⬜ Todo | 🔴 HIGH |
-| 4.3 | Logging & monitoring (structured logs) | ⬜ Todo | 🟡 MED |
-| 4.4 | Backup strategy (Postgres + Qdrant) | ⬜ Todo | 🟡 MED |
-| 4.5 | Performance test (1000 employees) | ⬜ Todo | 🟡 MED |
-| 4.6 | README.md สำหรับ GitHub | ⬜ Todo | 🟢 LOW |
-| 4.7 | CLAUDE.md สำหรับ AI session ถัดไป | ⬜ Todo | 🟢 LOW |
+| 5.1 | Docker production compose (nginx + SSL) | ⬜ Todo | 🔴 HIGH |
+| 5.2 | Strong SECRET_KEY + env hardening | ⬜ Todo | 🔴 HIGH |
+| 5.3 | Logging & monitoring (structured logs) | ⬜ Todo | 🟡 MED |
+| 5.4 | Backup strategy (Postgres + Qdrant) | ⬜ Todo | 🟡 MED |
+| 5.5 | Performance test (1000 employees, 10+ cameras) | ⬜ Todo | 🟡 MED |
+| 5.6 | README.md สำหรับ GitHub | ⬜ Todo | 🟢 LOW |
+| 5.7 | CLAUDE.md สำหรับ AI session ถัดไป | ⬜ Todo | 🟢 LOW |
 
 ---
 
