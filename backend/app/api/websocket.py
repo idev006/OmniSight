@@ -30,10 +30,14 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.security import get_current_user_ws
-from app.core.face_engine import face_engine
+from app.core.face_engine import face_engine, anti_spoof_engine
 from app.db.postgres import async_session_factory
 from app.db.qdrant import get_qdrant_sync
-from app.db.redis import get_station_filter, redis as _redis, increment_unknown_count, get_unknown_alert_threshold
+from app.db.redis import (
+    get_station_filter, redis as _redis,
+    increment_unknown_count, get_unknown_alert_threshold,
+    get_anti_spoof_enabled, get_anti_spoof_threshold,
+)
 from app.models.orm import Employee, Department
 from app.models.schemas import BBox, FaceResult, ScanResult
 from app.services.attendance_service import log_attendance
@@ -203,9 +207,27 @@ async def scan_ws(
                     )
 
                 faces: list[FaceResult] = []
-                match_threshold = await _get_match_threshold()
+                match_threshold   = await _get_match_threshold()
+                spoof_enabled     = await get_anti_spoof_enabled() and anti_spoof_engine.available
+                spoof_threshold   = await get_anti_spoof_threshold() if spoof_enabled else 0.6
 
                 for tracking_id, embedding, bbox in detections:
+                    # Anti-spoofing gate — reject photo/video replay attacks
+                    if spoof_enabled:
+                        is_live, spoof_score = await loop.run_in_executor(
+                            _executor,
+                            lambda b=bbox: anti_spoof_engine.check_liveness(frame, b, spoof_threshold),
+                        )
+                        if not is_live:
+                            faces.append(FaceResult(
+                                tracking_id=tracking_id,
+                                status="spoof",
+                                confidence=spoof_score,
+                                bbox=BBox(x=bbox[0], y=bbox[1],
+                                          w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
+                                attendance_logged=False,
+                            ))
+                            continue
                     # Qdrant search — synchronous client → thread pool
                     results = await loop.run_in_executor(
                         _executor,

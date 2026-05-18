@@ -97,7 +97,7 @@ class BBox(BaseModel):
 
 class FaceResult(BaseModel):
     tracking_id: int
-    status: str                          # "match" | "unknown"
+    status: str                          # "match" | "unknown" | "spoof"
     employee_id: Optional[UUID4] = None
     full_name: Optional[str] = None
     dept_name: Optional[str] = None

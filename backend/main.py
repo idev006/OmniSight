@@ -37,6 +37,9 @@ async def _seed_admin():
         ("max_fps_per_camera", "2",     "int",    "Max frames per second the backend processes per camera"),
         ("inference_workers",  "2",     "int",    "Number of parallel ONNX inference workers (restart required)"),
         ("face_detect_size",   "640",   "int",    "Input resolution for face detector: 320 (fast) or 640 (accurate)"),
+        # Anti-spoofing
+        ("anti_spoof_enabled",   "0",   "int",    "Enable MiniFASNet anti-spoofing (1=on, 0=off). Requires model download."),
+        ("anti_spoof_threshold", "0.6", "float",  "Minimum liveness score to accept as real face (0.0–1.0)"),
     ]
 
     async with async_session_factory() as db:
@@ -74,6 +77,17 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_collection()
     await _seed_admin()
+
+    # Init anti-spoof engine (lazy — won't load model until first use)
+    from app.core.face_engine import anti_spoof_engine
+    anti_spoof_engine.init(settings.anti_spoof_model_dir)
+    if anti_spoof_engine.available:
+        logger.info("AntiSpoofEngine: MiniFASNet model found — anti-spoofing ready")
+    else:
+        logger.warning(
+            "AntiSpoofEngine: model not found — anti-spoofing disabled. "
+            "Run: python backend/scripts/download_anti_spoof_model.py"
+        )
 
     # Start heartbeat monitor (background task)
     heartbeat_task = asyncio.create_task(camera_manager.heartbeat_monitor())

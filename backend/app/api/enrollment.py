@@ -8,9 +8,9 @@ from app.db.qdrant import get_qdrant
 from app.models.orm import Employee, FaceTemplate
 from app.models.schemas import EnrollmentStatus, FaceTemplateOut
 from app.core.config import get_settings
-from app.core.face_engine import face_engine
+from app.core.face_engine import face_engine, anti_spoof_engine
 from app.core.security import require_hr, CurrentUser
-from app.db.redis import get_min_face_quality
+from app.db.redis import get_min_face_quality, get_anti_spoof_enabled, get_anti_spoof_threshold
 from qdrant_client.models import PointStruct, PointIdsList
 import uuid, shutil
 from pathlib import Path
@@ -119,6 +119,22 @@ async def upload_face_sample(
         img_path.unlink(missing_ok=True)
         raise HTTPException(422, "No face detected in image")
     embedding = embeddings[0]
+
+    # Anti-spoofing check (if enabled and model available)
+    if await get_anti_spoof_enabled() and anti_spoof_engine.available:
+        faces = face_engine.app.get(img)
+        if faces:
+            bbox = [int(v) for v in faces[0].bbox]
+            threshold = await get_anti_spoof_threshold()
+            is_live, spoof_score = anti_spoof_engine.check_liveness(img, bbox, threshold)
+            if not is_live:
+                img_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    422,
+                    f"Anti-spoofing failed — liveness score {spoof_score:.2f} < {threshold:.2f}. "
+                    "Use a live face in good lighting, not a photo or screen."
+                )
+
     quality = face_engine.get_quality_score(img)
     min_quality = await get_min_face_quality()
     if quality < min_quality:

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     max_fps_per_camera: int = 2       # Backend-side FPS gate per camera connection
     inference_workers: int = 2         # Thread pool size for face engine (CPU-bound)
 
+    # Anti-spoofing
+    anti_spoof_model_dir: str = str(_PROJECT_ROOT / "models" / "anti_spoof")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

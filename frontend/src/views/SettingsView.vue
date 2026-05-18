@@ -152,6 +152,8 @@ const META = {
   access_token_expire_hours: { label: 'JWT Token Expiry',      hint: 'hours (1–720)', min: 1,    max: 720  },
   match_threshold:           { label: 'Match Threshold',        hint: '0.0–1.0',       min: 0.1,  max: 1.0  },
   min_face_quality:          { label: 'Min Face Quality',       hint: '0.0–1.0',       min: 0.0,  max: 1.0  },
+  anti_spoof_enabled:        { label: 'Anti-Spoofing',          hint: '0=off, 1=on (requires model)', min: 0, max: 1 },
+  anti_spoof_threshold:      { label: 'Anti-Spoof Threshold',   hint: '0.0–1.0 liveness score', min: 0.0, max: 1.0 },
   cooldown_seconds:          { label: 'Attendance Cooldown',    hint: 'seconds',       min: 30,   max: 86400 },
   unknown_face_alert:        { label: 'Unknown Face Alert',     hint: 'count per 5min',min: 1,    max: 100  },
   late_threshold_minutes:    { label: 'Late Threshold',         hint: 'minutes after shift start', min: 0, max: 120 },
@@ -176,7 +178,7 @@ const groups = [
     desc: 'Matching accuracy and enrollment quality thresholds',
     icon: '👁️',
     iconBg: 'bg-primary/10 text-primary',
-    keys: ['match_threshold', 'min_face_quality'],
+    keys: ['match_threshold', 'min_face_quality', 'anti_spoof_enabled', 'anti_spoof_threshold'],
   },
   {
     id: 'attendance',

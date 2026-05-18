@@ -92,6 +92,26 @@ async def get_unknown_alert_threshold() -> int:
     return 5
 
 
+async def get_anti_spoof_enabled() -> bool:
+    try:
+        val = await redis.get("setting:anti_spoof_enabled")
+        if val is not None:
+            return int(val) == 1
+    except Exception:
+        pass
+    return False
+
+
+async def get_anti_spoof_threshold() -> float:
+    try:
+        val = await redis.get("setting:anti_spoof_threshold")
+        if val:
+            return max(0.0, min(1.0, float(val)))
+    except Exception:
+        pass
+    return 0.6
+
+
 async def set_attendance_cooldown(employee_id: str, station_id: str):
     """ตั้ง cooldown key โดย TTL อ่านจาก Settings UI แบบ real-time"""
     try:
