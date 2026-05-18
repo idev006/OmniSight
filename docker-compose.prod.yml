@@ -1,0 +1,76 @@
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-omnisight}
+      POSTGRES_USER:     ${POSTGRES_USER:-omnisight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-omnisight}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - qdrantdata:/qdrant/storage
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server --save "" --appendonly no
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+
+  # ── Backend API ──────────────────────────────────────────────────────────────
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:  "postgresql+asyncpg://${POSTGRES_USER:-omnisight}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-omnisight}"
+      REDIS_URL:     "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      QDRANT_HOST:   qdrant
+      QDRANT_PORT:   "6333"
+      SECRET_KEY:    ${SECRET_KEY:?SECRET_KEY is required}
+      STORAGE_PATH:  /app/storage/faces
+    volumes:
+      - storage:/app/storage
+      - ./models:/app/models:ro      # anti-spoof model (read-only)
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+
+  # ── Frontend + Reverse Proxy (nginx + SSL) ───────────────────────────────────
+
+  nginx:
+    build:
+      context: .                    # project root (needs frontend/ + nginx/)
+      dockerfile: nginx/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl:ro   # SSL certs (see nginx/generate_self_signed_cert.sh)
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  qdrantdata:
+  storage:

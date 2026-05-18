@@ -22,6 +22,15 @@ backend/.env
 # Storage / uploaded files
 storage/
 
+# ML models (large binary files — download separately)
+models/
+
+# SSL certificates
+nginx/ssl/
+
+# Production env
+.env.prod
+
 # Alembic generated (keep versions, ignore __pycache__)
 backend/alembic/versions/__pycache__/
 
