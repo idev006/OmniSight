@@ -154,6 +154,7 @@ const META = {
   min_face_quality:          { label: 'Min Face Quality',       hint: '0.0–1.0',       min: 0.0,  max: 1.0  },
   cooldown_seconds:          { label: 'Attendance Cooldown',    hint: 'seconds',       min: 30,   max: 86400 },
   unknown_face_alert:        { label: 'Unknown Face Alert',     hint: 'count per 5min',min: 1,    max: 100  },
+  late_threshold_minutes:    { label: 'Late Threshold',         hint: 'minutes after shift start', min: 0, max: 120 },
   max_fps_per_camera:        { label: 'Max FPS per Camera',     hint: '1–30',          min: 1,    max: 30   },
   inference_workers:         { label: 'Inference Workers',      hint: 'threads',       min: 1,    max: 16   },
   face_detect_size:          { label: 'Face Detect Input Size', hint: '320 or 640',    min: 160,  max: 1280 },
@@ -183,7 +184,7 @@ const groups = [
     desc: 'Cooldown period and alert triggers',
     icon: '📋',
     iconBg: 'bg-success/10 text-success',
-    keys: ['cooldown_seconds', 'unknown_face_alert'],
+    keys: ['cooldown_seconds', 'unknown_face_alert', 'late_threshold_minutes'],
   },
   {
     id: 'performance',

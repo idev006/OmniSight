@@ -4,9 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, cast, Date
 from sqlalchemy.orm import selectinload
 from app.db.postgres import get_db
-from app.models.orm import AttendanceLog, Employee, Station, Department
+from app.models.orm import AttendanceLog, Employee, Station, Department, Shift
 from app.core.security import require_hr, CurrentUser
-from datetime import date, datetime, timezone
+from app.db.redis import redis as _redis
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 import calendar
 
@@ -57,6 +58,132 @@ async def list_attendance(
         }
         for log in logs
     ]
+
+
+@router.get("/daily-report")
+async def daily_attendance_report(
+    report_date: date = Query(default=None, alias="date"),
+    dept_id: int = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
+    """
+    รายงานสถานะรายวัน: PRESENT / LATE / ABSENT สำหรับพนักงานที่มี Shift กำหนดไว้
+
+    - PRESENT : มี attendance log ก่อนหรือภายใน late_threshold_minutes หลัง shift.start_time
+    - LATE    : log แรกมาหลัง shift.start_time + late_threshold_minutes
+    - ABSENT  : ไม่มี log เลยในวันนั้น
+    """
+    target_date = report_date or datetime.now(timezone.utc).date()
+
+    # อ่าน late threshold จาก Redis (live setting)
+    late_threshold = 15
+    try:
+        val = await _redis.get("setting:late_threshold_minutes")
+        if val:
+            late_threshold = max(0, int(val))
+    except Exception:
+        pass
+
+    # ── ดึงพนักงานทั้งหมดที่มี shift กำหนดไว้ ─────────────────────────────────
+    emp_q = (
+        select(Employee)
+        .options(
+            selectinload(Employee.department),
+            selectinload(Employee.shift),
+        )
+        .where(Employee.is_active == True, Employee.shift_id.isnot(None))
+    )
+    if dept_id:
+        emp_q = emp_q.where(Employee.dept_id == dept_id)
+
+    emp_result = await db.execute(emp_q)
+    employees = emp_result.scalars().all()
+
+    if not employees:
+        return {"date": str(target_date), "late_threshold_minutes": late_threshold, "records": []}
+
+    # ── ดึง attendance logs ของวันนั้น สำหรับพนักงานที่เลือก ───────────────────
+    emp_ids = [e.id for e in employees]
+    day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
+    day_end   = day_start + timedelta(days=1)
+
+    logs_q = (
+        select(AttendanceLog)
+        .where(
+            AttendanceLog.employee_id.in_(emp_ids),
+            AttendanceLog.timestamp >= day_start,
+            AttendanceLog.timestamp < day_end,
+        )
+        .order_by(AttendanceLog.timestamp.asc())
+    )
+    logs_result = await db.execute(logs_q)
+    logs = logs_result.scalars().all()
+
+    # หา first check-in per employee
+    first_checkin: dict = {}
+    for log in logs:
+        eid = str(log.employee_id)
+        if eid not in first_checkin:
+            first_checkin[eid] = log
+
+    # ── คำนวณสถานะ ─────────────────────────────────────────────────────────────
+    records = []
+    for emp in employees:
+        eid = str(emp.id)
+        shift = emp.shift
+        first_log = first_checkin.get(eid)
+
+        if first_log is None:
+            status = "ABSENT"
+            check_in_time = None
+            minutes_late = None
+        else:
+            check_in_time = first_log.timestamp
+            # เปรียบเทียบเวลา check-in (UTC) กับ shift.start_time
+            shift_start_dt = datetime(
+                target_date.year, target_date.month, target_date.day,
+                shift.start_time.hour, shift.start_time.minute,
+                tzinfo=timezone.utc,
+            )
+            delta_seconds = (check_in_time - shift_start_dt).total_seconds()
+            minutes_late = max(0, int(delta_seconds // 60))
+
+            if delta_seconds <= late_threshold * 60:
+                status = "PRESENT"
+            else:
+                status = "LATE"
+
+        records.append({
+            "employee_id":  str(emp.id),
+            "emp_code":     emp.emp_code,
+            "full_name":    emp.full_name,
+            "dept_name":    emp.department.name if emp.department else None,
+            "shift_name":   shift.name,
+            "shift_start":  shift.start_time.strftime("%H:%M"),
+            "shift_end":    shift.end_time.strftime("%H:%M"),
+            "check_in_time": check_in_time.isoformat() if check_in_time else None,
+            "minutes_late": minutes_late,
+            "status":       status,
+        })
+
+    # เรียงลำดับ: ABSENT ก่อน, LATE, PRESENT
+    order = {"ABSENT": 0, "LATE": 1, "PRESENT": 2}
+    records.sort(key=lambda r: (order[r["status"]], r["full_name"]))
+
+    summary = {
+        "total": len(records),
+        "present": sum(1 for r in records if r["status"] == "PRESENT"),
+        "late":    sum(1 for r in records if r["status"] == "LATE"),
+        "absent":  sum(1 for r in records if r["status"] == "ABSENT"),
+    }
+
+    return {
+        "date": str(target_date),
+        "late_threshold_minutes": late_threshold,
+        "summary": summary,
+        "records": records,
+    }
 
 
 @router.get("/{log_id}/snapshot")

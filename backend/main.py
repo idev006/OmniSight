@@ -30,8 +30,9 @@ async def _seed_admin():
         ("match_threshold",    "0.72",  "float",  "Minimum cosine similarity score for a face match (0.0–1.0)"),
         ("min_face_quality",   "0.6",   "float",  "Minimum quality score required during enrollment (0.0–1.0)"),
         # Attendance
-        ("cooldown_seconds",   "300",   "int",    "Minimum seconds between two attendance records for the same person"),
-        ("unknown_face_alert", "5",     "int",    "Trigger alert after N unknown faces detected within 5 minutes"),
+        ("cooldown_seconds",      "300",  "int",  "Minimum seconds between two attendance records for the same person"),
+        ("unknown_face_alert",    "5",    "int",  "Trigger alert after N unknown faces detected within 5 minutes"),
+        ("late_threshold_minutes","15",   "int",  "Minutes after shift start_time before marking employee as LATE"),
         # Performance
         ("max_fps_per_camera", "2",     "int",    "Max frames per second the backend processes per camera"),
         ("inference_workers",  "2",     "int",    "Number of parallel ONNX inference workers (restart required)"),

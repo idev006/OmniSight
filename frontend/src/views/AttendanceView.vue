@@ -13,11 +13,17 @@
         </svg>
         Export CSV
       </button>
-      <button v-else class="btn btn-ghost btn-sm gap-2" @click="exportSummaryCSV">
+      <button v-else-if="activeTab === 'summary'" class="btn btn-ghost btn-sm gap-2" @click="exportSummaryCSV">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
         Export Report CSV
+      </button>
+      <button v-else class="btn btn-ghost btn-sm gap-2" @click="exportDailyCSV">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        Export Daily CSV
       </button>
     </div>
 
@@ -28,6 +34,9 @@
       </button>
       <button role="tab" class="tab" :class="{ 'tab-active': activeTab === 'summary' }" @click="activateReport">
         Monthly Report
+      </button>
+      <button role="tab" class="tab" :class="{ 'tab-active': activeTab === 'daily' }" @click="activateDaily">
+        Daily Status
       </button>
     </div>
 
@@ -97,8 +106,118 @@
       </DataTable>
     </template>
 
+    <!-- ───── TAB: DAILY STATUS ──────────────────────────────────────────── -->
+    <template v-else-if="activeTab === 'daily'">
+
+      <!-- Filters -->
+      <div class="flex gap-2 flex-wrap items-end">
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Date</span></label>
+          <input v-model="dailyDate" type="date" class="input input-bordered input-sm" />
+        </div>
+        <div class="form-control">
+          <label class="label py-1"><span class="label-text text-xs">Department</span></label>
+          <select v-model="dailyDept" class="select select-bordered select-sm">
+            <option value="">All Departments</option>
+            <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm self-end" @click="fetchDaily" :class="{ loading: dailyLoading }">
+          Apply
+        </button>
+      </div>
+
+      <!-- KPI cards -->
+      <div v-if="dailyReport" class="stats bg-base-100 border border-base-300 shadow-sm w-full">
+        <div class="stat py-3">
+          <div class="stat-title text-xs">Total Employees</div>
+          <div class="stat-value text-2xl">{{ dailyReport.summary.total }}</div>
+          <div class="stat-desc">with shift assigned</div>
+        </div>
+        <div class="stat py-3">
+          <div class="stat-title text-xs">Present</div>
+          <div class="stat-value text-2xl text-success">{{ dailyReport.summary.present }}</div>
+          <div class="stat-desc">on time</div>
+        </div>
+        <div class="stat py-3">
+          <div class="stat-title text-xs">Late</div>
+          <div class="stat-value text-2xl text-warning">{{ dailyReport.summary.late }}</div>
+          <div class="stat-desc">&gt; {{ dailyReport.late_threshold_minutes }} min after shift</div>
+        </div>
+        <div class="stat py-3">
+          <div class="stat-title text-xs">Absent</div>
+          <div class="stat-value text-2xl text-error">{{ dailyReport.summary.absent }}</div>
+          <div class="stat-desc">no check-in</div>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="dailyLoading" class="flex justify-center py-12">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+
+      <!-- Table -->
+      <div v-else-if="dailyReport" class="overflow-x-auto bg-base-100 rounded-xl border border-base-300">
+        <table class="table table-sm">
+          <thead>
+            <tr class="text-xs text-base-content/50">
+              <th>Status</th>
+              <th>Employee</th>
+              <th>Code</th>
+              <th>Department</th>
+              <th>Shift</th>
+              <th>Check-in</th>
+              <th>Late (min)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in dailyReport.records" :key="r.employee_id"
+              class="hover:bg-base-200/50 transition-colors">
+              <td>
+                <span class="badge badge-sm font-semibold"
+                  :class="{
+                    'badge-success':  r.status === 'PRESENT',
+                    'badge-warning':  r.status === 'LATE',
+                    'badge-error':    r.status === 'ABSENT',
+                  }">
+                  {{ r.status }}
+                </span>
+              </td>
+              <td class="font-medium text-sm">{{ r.full_name }}</td>
+              <td class="font-mono text-xs text-base-content/60">{{ r.emp_code }}</td>
+              <td class="text-sm text-base-content/70">{{ r.dept_name || '—' }}</td>
+              <td>
+                <div class="flex flex-col text-xs">
+                  <span class="font-medium">{{ r.shift_name }}</span>
+                  <span class="text-base-content/40">{{ r.shift_start }} – {{ r.shift_end }}</span>
+                </div>
+              </td>
+              <td class="font-mono text-xs">
+                {{ r.check_in_time ? formatTime(r.check_in_time) : '—' }}
+              </td>
+              <td class="text-center">
+                <span v-if="r.status === 'LATE'" class="font-mono text-warning font-semibold text-sm">
+                  +{{ r.minutes_late }}
+                </span>
+                <span v-else-if="r.status === 'ABSENT'" class="text-base-content/30 text-sm">—</span>
+                <span v-else class="text-success text-sm">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="dailyReport.records.length === 0"
+          class="py-12 text-center text-sm text-base-content/30">
+          No employees with shift assigned found
+        </div>
+      </div>
+
+      <div v-else-if="!dailyLoading" class="py-8 text-center text-sm text-base-content/30">
+        Select a date and click Apply to load the daily status report
+      </div>
+    </template>
+
     <!-- ───── TAB: SUMMARY ────────────────────────────────────────────────── -->
-    <template v-else>
+    <template v-else-if="activeTab === 'summary'">
 
       <!-- Filters row -->
       <div class="flex gap-2 flex-wrap items-end">
@@ -408,6 +527,47 @@ function exportSummaryCSV() {
   const rows = summary.value.by_day.map(d => [d.date, d.count, d.unique_employees])
   downloadCSV([header, ...rows], `attendance_summary_${summary.value.month}.csv`)
   toast.success('Summary CSV exported')
+}
+
+// ── Daily Status tab ─────────────────────────────────────────────────────────
+const dailyReport  = ref(null)
+const dailyLoading = ref(false)
+const dailyDate    = ref(new Date().toISOString().slice(0, 10))
+const dailyDept    = ref('')
+
+function activateDaily() {
+  activeTab.value = 'daily'
+}
+
+async function fetchDaily() {
+  dailyLoading.value = true
+  try {
+    const params = { date: dailyDate.value }
+    if (dailyDept.value) params.dept_id = dailyDept.value
+    const { data } = await api.get('/api/v1/attendance/daily-report', { params })
+    dailyReport.value = data
+  } catch {
+    toast.error('Failed to load daily status report')
+  } finally {
+    dailyLoading.value = false
+  }
+}
+
+function exportDailyCSV() {
+  if (!dailyReport.value?.records?.length) { toast.warning('No records to export'); return }
+  const header = ['Status', 'Employee', 'Code', 'Department', 'Shift', 'Shift Start', 'Check-in', 'Minutes Late']
+  const rows = dailyReport.value.records.map(r => [
+    r.status,
+    r.full_name,
+    r.emp_code,
+    r.dept_name || '',
+    r.shift_name,
+    r.shift_start,
+    r.check_in_time ? formatTime(r.check_in_time) : '',
+    r.minutes_late ?? '',
+  ])
+  downloadCSV([header, ...rows], `daily_status_${dailyDate.value}.csv`)
+  toast.success('Daily CSV exported')
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
