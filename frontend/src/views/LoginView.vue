@@ -55,6 +55,9 @@
               placeholder="Enter username"
               class="input input-bordered w-full"
               autocomplete="username"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
               required
               autofocus
             />
@@ -70,6 +73,8 @@
               placeholder="Enter password"
               class="input input-bordered w-full"
               autocomplete="current-password"
+              autocapitalize="off"
+              autocorrect="off"
               required
             />
           </label>

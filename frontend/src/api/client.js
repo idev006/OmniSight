@@ -12,7 +12,9 @@ import axios from 'axios'
 import { TOKEN_KEY } from '@/stores/auth'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  // ใช้ relative URL — Vite proxy (/api → localhost:8000) จัดการเอง
+  // ทำงานได้ทั้งจาก localhost และจาก IP address บนมือถือ
+  baseURL: import.meta.env.VITE_API_URL || '/',
   timeout: 10000,
 })
 

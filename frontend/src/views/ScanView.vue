@@ -132,10 +132,13 @@ async function _start(stationId) {
     pausedByServer.value = false
 
     // Connect WebSocket — use TOKEN_KEY (not hardcoded 'token')
-    const token = localStorage.getItem(TOKEN_KEY)
+    // ใช้ window.location.hostname แทน localhost — ทำงานได้ทั้งจาก PC และมือถือ
+    const token   = localStorage.getItem(TOKEN_KEY)
+    const wsHost  = window.location.hostname
+    const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     wsState.value = 'connecting'
     ws = new WebSocket(
-      `ws://localhost:8000/api/v1/ws/scan/${stationId}?token=${token}`
+      `${wsProto}://${wsHost}:8000/api/v1/ws/scan/${stationId}?token=${token}`
     )
 
     ws.onopen = () => { wsState.value = 'open' }

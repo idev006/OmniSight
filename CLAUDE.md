@@ -141,6 +141,7 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | `doc/project_management/DECISIONS_LOG.md` | ADR-001 ถึง ADR-011 |
 | `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` | Multi-camera & Pilot Console design |
 | `doc/cluade_version/chapter_22_auth_authorization.md` | Auth/Authz — seq diagrams + API matrix |
+| `doc/cluade_version/chapter_23_mobile_scan_hud.md` | Mobile Scan HUD — persona, audio, wake lock, state machine |
 
 ---
 
