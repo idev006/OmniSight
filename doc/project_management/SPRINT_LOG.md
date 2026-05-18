@@ -492,14 +492,176 @@ Multiple cams  → Concurrent WS   → asyncio event loop stays free
 
 ---
 
+## Sprint 11 — Face Snapshot Evidence ✅ DONE
+**วันที่:** 2026-05-18 (Session 8)  
+**เป้าหมาย:** บันทึกรูปใบหน้า (crop จาก frame) ทุกครั้งที่ scan match → เก็บใน disk + แสดงใน Attendance page
+
+### สิ่งที่ทำ
+
+#### 1. Database — `backend/app/models/orm.py`
+- เพิ่ม `snapshot_path: Mapped[Optional[str]]` ใน `AttendanceLog` model
+
+#### 2. Migration — `backend/alembic/versions/c3f8a92b1d74_add_snapshot_path_to_attendance_logs.py`
+- `ALTER TABLE attendance_logs ADD COLUMN snapshot_path VARCHAR NULLABLE`
+
+#### 3. Config — `backend/app/core/config.py`
+- แก้ `storage_path` จาก relative `"storage"` → absolute path ด้วย `_PROJECT_ROOT`
+- เหตุผล: uvicorn เปลี่ยน cwd ทำให้ relative path ชี้ผิดที่
+
+#### 4. WebSocket — `backend/app/api/websocket.py`
+```python
+# Crop face region with 25% padding → JPEG bytes
+x1, y1, x2, y2 = bbox
+pad_x = int((x2 - x1) * 0.25)
+pad_y = int((y2 - y1) * 0.25)
+crop = frame[max(0,y1-pad_y):min(ih,y2+pad_y), max(0,x1-pad_x):min(iw,x2+pad_x)]
+ok, buf = cv2.imencode('.jpg', crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+face_crop_jpg = buf.tobytes() if ok else None
+# → pass to log_attendance(face_crop_jpg=face_crop_jpg)
+```
+
+#### 5. Attendance Service — `backend/app/services/attendance_service.py`
+```python
+# Save JPEG snapshot to disk
+snap_dir = Path(settings.storage_path) / "snapshots" / datetime.now(timezone.utc).strftime("%Y-%m-%d")
+snap_dir.mkdir(parents=True, exist_ok=True)
+snap_path = snap_dir / f"{log.id}.jpg"
+snap_path.write_bytes(face_crop_jpg)
+log.snapshot_path = str(snap_path)
+```
+
+#### 6. Attendance API — `backend/app/api/attendance.py`
+- `snapshot_url: str | None` field ใน list response (`/api/v1/employees/{id}/enroll/{i}/image` pattern)
+- ใหม่: `GET /api/v1/attendance/{log_id}/snapshot` — serve JPEG (require_hr auth)
+
+#### 7. Frontend — `frontend/src/views/AttendanceView.vue`
+- `SnapshotImg` component: lazy-load thumbnail (32px) จาก `snapshot_url`
+- Click → fullscreen modal: รูปใหญ่ + `{employee_name} · {station} · {timestamp}`
+- Graceful: slot ว่าง (—) ถ้าไม่มี snapshot
+
+#### 8. main.py improvements
+- `logging.getLogger("app").setLevel(logging.INFO)` — ให้ app logs แสดงใน terminal
+- เพิ่ม `"http://192.168.1.170:5173"` ใน CORS origins — mobile ใน LAN เดียวกัน
+
+### ผลการทดสอบ
+- Attendance log id=27 สร้างด้วย `snapshot_path` set ✅
+- ไฟล์ JPEG บน disk: `storage/faces/snapshots/2026-05-18/27.jpg` (8468 bytes) ✅
+- Thumbnail แสดงใน Attendance page ✅
+
+### บทเรียนสำคัญ (zombie process debugging)
+uvicorn `--reload` บน Windows มี bug อันตราย:
+- ปิด terminal ด้วย X button **ไม่ได้ kill** process — python.exe ยังคงรันอยู่ (zombie)
+- `start-dev.bat` ใหม่รันขึ้น แต่ zombie ถือ port 8000 → server ใหม่ exit เงียบ ๆ
+- ทุก request ยังถูก handle โดย zombie (stale code จาก 08:26 AM)
+- ใช้เวลา ~3 ชั่วโมงในการ debug ก่อนพบว่า PID 20740 (zombie) กำลัง serve traffic
+- แก้โดย: `Stop-Process -Id 20740 -Force` จากนั้น `start-dev.bat` ใหม่ทำงานถูกต้อง
+- **บันทึกใน:** `C:\Users\66996\.claude\projects\...\memory\feedback_uvicorn_windows_reload.md`
+
+---
+
+## Sprint 12 — All Settings Live + AI Gates ✅ DONE
+**วันที่:** 2026-05-18 (Session 8 ต่อ)  
+**เป้าหมาย:** Settings UI ทุกตัวต้องทำงานจริง + face quality gate ตอน enrollment + unknown face alert
+
+### ปัญหาที่พบ (BUG-006)
+Settings ทุกตัว (ยกเว้น `access_token_expire_hours`) ไม่ทำงาน:
+- Redis key `setting:cooldown_seconds` = `None` (ว่างเปล่า)
+- `_get_cooldown_seconds()` ใน redis.py อ่านไม่ได้ → ใช้ hardcoded default 300s
+- สาเหตุ: ไม่มี code ที่ sync settings จาก DB → Redis ตอน startup
+- **แก้:** เพิ่ม startup sync loop ใน `main.py`
+
+```python
+# Sync all settings to Redis on startup (ใน _seed_admin)
+all_settings = await db.execute(select(SystemSetting))
+for s in all_settings.scalars().all():
+    await _redis.set(f"setting:{s.key}", s.value)
+```
+
+### สิ่งที่ทำ
+
+#### 1. `backend/main.py` — Startup Redis Sync
+- หลัง seed settings, sync ทุก key จาก `system_settings` → `setting:{key}` ใน Redis
+- ทำให้ทุก setting มีผลทันทีหลัง restart backend
+
+#### 2. `backend/app/api/websocket.py` — Live Match Threshold
+```python
+async def _get_match_threshold() -> float:
+    val = await _redis.get("setting:match_threshold")
+    return max(0.1, min(1.0, float(val))) if val else float(settings.match_threshold)
+
+# ใน scan loop (ก่อนหน้า: score_threshold=settings.match_threshold — ไม่เปลี่ยนตาม UI)
+match_threshold = await _get_match_threshold()
+results = await loop.run_in_executor(_executor, partial(qdrant.search, ..., score_threshold=match_threshold))
+```
+
+#### 3. `backend/app/db/redis.py` — Functions ใหม่
+```python
+async def get_min_face_quality() -> float:
+    """อ่าน min_face_quality จาก Redis — ใช้ใน enrollment.py"""
+
+async def increment_unknown_count(station_id: str) -> int:
+    """Redis INCR + EXPIRE 300 — rolling 5-min counter per station"""
+
+async def get_unknown_alert_threshold() -> int:
+    """อ่าน unknown_face_alert threshold จาก Redis"""
+```
+
+#### 4. `backend/app/api/enrollment.py` — Face Quality Gate
+```python
+quality = face_engine.get_quality_score(img)
+min_quality = await get_min_face_quality()
+if quality < min_quality:
+    img_path.unlink(missing_ok=True)
+    raise HTTPException(422, f"Face quality too low ({quality:.2f} < {min_quality:.2f}) — ...")
+```
+
+#### 5. `backend/app/api/websocket.py` — Unknown Face Alert
+```python
+# ใน else branch (unknown face):
+unknown_count = await increment_unknown_count(station_id)
+threshold = await get_unknown_alert_threshold()
+if unknown_count >= threshold:
+    await _redis.publish("omnisight:events", json.dumps({
+        "event": "unknown_face_alert",
+        "station_id": station_id,
+        "camera_id": camera_id,
+        "count": unknown_count,
+        "threshold": threshold,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }))
+```
+- Pilot Console รับ event นี้และแสดงในหน้า Event Feed อัตโนมัติ
+
+#### 6. `start-dev.bat` — Zombie Process Prevention
+```bat
+echo [0/2] Cleaning up old Python processes...
+taskkill /F /IM python.exe >nul 2>&1
+taskkill /F /IM uvicorn.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
+```
+
+### Settings ทำงานครบ (8/8)
+| Key | ผลที่แก้แล้ว |
+|-----|------------|
+| `access_token_expire_hours` | DB query ตอน login ✅ (เดิมทำงานอยู่แล้ว) |
+| `match_threshold` | Redis live read ✅ (แก้ใหม่) |
+| `min_face_quality` | Redis live read ✅ (แก้ใหม่) |
+| `cooldown_seconds` | Redis live read ✅ (startup sync แก้) |
+| `unknown_face_alert` | Redis live read ✅ (แก้ใหม่) |
+| `max_fps_per_camera` | Redis live read ✅ (startup sync แก้) |
+| `inference_workers` | Pydantic config (restart required) |
+| `face_detect_size` | Pydantic config (restart required) |
+
+---
+
 ## Context สำหรับ AI Session ถัดไป
 
 เมื่อเริ่ม session ใหม่ให้อ่าน:
-1. `doc/project_management/PROJECT_STATUS.md` — ภาพรวม + phase progress (Phase 1-5 + Sprint 8)
-2. `doc/project_management/SPRINT_LOG.md` — Sprint 7 (attendance ✅), Sprint 8 (auth/security ✅)
-3. `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design ครบ
-4. `doc/cluade_version/chapter_22_auth_authorization.md` — Auth/Authz ครบ (seq diagrams + matrix)
-5. `doc/project_management/DECISIONS_LOG.md` — ADR-009/010/011 (multi-camera decisions)
+1. `doc/project_management/PROJECT_STATUS.md` — dashboard + phase tracking (Sprint 12 latest)
+2. `doc/project_management/SPRINT_LOG.md` — Sprint 7–12 history
+3. `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design
+4. `doc/cluade_version/chapter_22_auth_authorization.md` — Auth/Authz (seq diagrams + matrix)
+5. `doc/project_management/DECISIONS_LOG.md` — ADR-001 ถึง ADR-011
 
 **⚠️ Path สำคัญ — ห้ามผิด:**
 | สิ่งของ | Path |
@@ -511,30 +673,36 @@ Multiple cams  → Concurrent WS   → asyncio event loop stays free
 | pip | `F:\programming\python\OmniSight\my_env\Scripts\pip.exe` |
 
 **Environment:**
-- Backend start: `start-backend.bat` (uvicorn port 8000)
+- Backend start: `.\start-dev.bat` หรือ `.\start-backend.bat` (uvicorn port 8000)
+- `start-dev.bat` มี `taskkill` ก่อน start — ป้องกัน zombie process
 - DB migration: `migrate.bat upgrade`
 - Services: Docker → PostgreSQL (5432), Qdrant (6333), Redis (6379)
 
-**State ปัจจุบัน (Sprint 8 done):**
-- emp1 (db421a76): enrolled 6/6 slots ✅
-- emp2 (848449d0): enrolled 0/6
+**State ปัจจุบัน (Sprint 12 done):**
+- emp1: enrolled 6/6 slots ✅, has attendance logs with snapshots
+- emp2: enrolled 0/6
 - sta1 (ccd829a0): ไม่มี dept filter
-- attendance_logs: 2 records (Sprint 7 verified)
+- attendance_logs: 27+ records, records id≥27 มี snapshot_path
 - Qdrant: 7 vectors (6 จริง + 1 orphaned, BUG-002 open)
-- GitHub: https://github.com/idev006/OmniSight (commit 6bb79e9, ยังไม่ push Sprint 8)
+- GitHub: https://github.com/idev006/OmniSight (ยังไม่ push Sprint 9–12)
 - Users: admin (ADMIN), hr1 (HR), operator1 (OPERATOR) — bcrypt hashed
+- Settings (admin ตั้งไว้): cooldown=10s, max_fps=15, match_threshold=0.70, min_quality=0.60
 
-**Auth Architecture (Sprint 8):**
-- Frontend SSOT: `auth.js` Pinia store — token expiry computed, no stale state
-- localStorage key: `omnisight-token` (legacy `token` key cleaned on init)
-- 401 interceptor: redirect `/login?reason=expired` หรือ `/login?reason=deactivated`
-- Backend: 17 endpoints ทั้งหมดมี `Depends(require_hr/require_admin/get_current_user)` แล้ว
-- JWT expire: admin ตั้งค่าได้ผ่าน /settings → Security → access_token_expire_hours
+**Settings Architecture (Sprint 12):**
+- Settings API: เขียน DB + Redis ทุกครั้งที่ save
+- Startup: sync ทุก key จาก DB → Redis ทุกครั้งที่ restart backend
+- Live read keys: `setting:match_threshold`, `setting:max_fps_per_camera`, `setting:cooldown_seconds`, `setting:min_face_quality`, `setting:unknown_face_alert`
+- Static keys (restart required): `inference_workers`, `face_detect_size`
 
-**งานถัดไป (Sprint 9):**
-1. Camera model + CRUD API (cameras table, /api/v1/cameras)
-2. WebSocket อัพเดทรับ camera_id
-3. CameraManager service + Redis Pub/Sub
-4. BUG-002: Orphaned Qdrant vector reconcile
+**⚠️ uvicorn Windows zombie process warning:**
+- อย่าปิด terminal ด้วย X — ให้ Ctrl+C แทน
+- ถ้า backend ไม่ตอบสนองถูกต้อง ให้รัน `taskkill /F /IM python.exe` ก่อนเสมอ
+- ดูรายละเอียดใน memory: `feedback_uvicorn_windows_reload.md`
+
+**งานถัดไป (Sprint 13):**
+1. **BUG-002** — Orphaned Qdrant vector reconcile script (สร้าง script ลบ orphaned vectors)
+2. **Anti-spoofing** — MiniFASNet integration (Phase 2 AI feature)
+3. **GitHub push** — Sprint 9–12 ทั้งหมด (ต้องขออนุญาต user ก่อน)
+4. **Phase 5** — Production: nginx + SSL + Docker production compose
 
 **⚠️ GitHub push policy:** ต้องขออนุญาต user ก่อนทุกครั้ง — ห้าม push โดยไม่บอก

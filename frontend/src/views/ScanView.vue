@@ -5,13 +5,25 @@
         <h1 class="text-xl font-bold tracking-wide">Live Scan</h1>
         <p class="text-sm text-base-content/40 mt-0.5">Webcam face recognition</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap justify-end">
         <!-- WS status -->
         <div class="flex items-center gap-1.5 text-xs opacity-50">
           <span class="w-1.5 h-1.5 rounded-full"
             :class="wsState === 'open' ? 'bg-success animate-pulse' : 'bg-base-300'"></span>
           {{ wsState === 'open' ? 'Live' : wsState === 'connecting' ? 'Connecting…' : 'Offline' }}
         </div>
+
+        <!-- Camera selector (แสดงเมื่อมีกล้องมากกว่า 1 ตัว) -->
+        <select v-if="cameras.length > 1"
+          v-model="selectedCamera"
+          class="select select-bordered select-sm w-48"
+          :disabled="streaming"
+          title="เลือกกล้อง">
+          <option v-for="cam in cameras" :key="cam.deviceId" :value="cam.deviceId">
+            {{ cam.label || `Camera ${cameras.indexOf(cam) + 1}` }}
+          </option>
+        </select>
+
         <select v-model="selectedStation" class="select select-bordered select-sm w-56">
           <option value="">Select Station…</option>
           <option v-for="s in stations" :key="s.id" :value="s.id">{{ s.name }}</option>
@@ -84,16 +96,20 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { TOKEN_KEY } from '@/stores/auth'    // ← use shared TOKEN_KEY, never hardcode
 import api from '@/api/client'
 
-const stations       = ref([])
+const stations        = ref([])
 const selectedStation = ref('')
-const activeFaces    = ref([])
-const videoEl        = ref(null)
-const canvasEl       = ref(null)
+const activeFaces     = ref([])
+const videoEl         = ref(null)
+const canvasEl        = ref(null)
 
 const wsState        = ref('disconnected')
 const streaming      = ref(false)
 const pausedByServer = ref(false)
 const localFps       = ref(0)
+
+// ── Camera selection ──────────────────────────────────────────────────────────
+const cameras        = ref([])   // MediaDeviceInfo[] — videoInput devices
+const selectedCamera = ref('')   // deviceId ที่เลือก
 
 let ws            = null
 let mediaStream   = null
@@ -102,10 +118,23 @@ let _fpsTimer     = null
 let _fpsCounter   = 0
 let _destroyed    = false
 
+// ── Camera enumeration ────────────────────────────────────────────────────────
+async function _enumerateCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    cameras.value = devices.filter(d => d.kind === 'videoinput')
+    // ถ้ายังไม่ได้เลือก → ใช้ตัวแรก
+    if (!selectedCamera.value && cameras.value.length > 0) {
+      selectedCamera.value = cameras.value[0].deviceId
+    }
+  } catch { /* permission denied or not supported */ }
+}
+
 // ── Station loading ───────────────────────────────────────────────────────────
 onMounted(async () => {
   const { data } = await api.get('/api/v1/stations')
   stations.value = data
+  await _enumerateCameras()
 })
 
 onUnmounted(() => {
@@ -113,20 +142,38 @@ onUnmounted(() => {
   _stop()
 })
 
-// ── React to station selection ────────────────────────────────────────────────
+// ── React to station or camera selection ─────────────────────────────────────
 watch(selectedStation, (id) => {
   _stop()
   if (id) _start(id)
 })
 
+// เมื่อเปลี่ยนกล้องระหว่าง streaming → restart stream
+watch(selectedCamera, (newId, oldId) => {
+  if (!oldId || !streaming.value) return   // ยังไม่ได้ stream อยู่ → ไม่ต้องทำอะไร
+  _stop()
+  if (selectedStation.value) _start(selectedStation.value)
+})
+
 // ── Start scanning ────────────────────────────────────────────────────────────
 async function _start(stationId) {
   try {
-    // Open webcam
+    // Open webcam — ใช้ deviceId ที่เลือก (ถ้ามี)
+    const videoConstraints = {
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 15 },
+    }
+    if (selectedCamera.value) videoConstraints.deviceId = { exact: selectedCamera.value }
     mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } },
+      video: videoConstraints,
       audio: false,
     })
+    // Re-enumerate หลังได้ permission → ได้ label ที่ถูกต้อง
+    await _enumerateCameras()
+    // อัปเดต selectedCamera ให้ตรงกับกล้องที่ stream จริง
+    const activeDeviceId = mediaStream.getVideoTracks()[0]?.getSettings()?.deviceId
+    if (activeDeviceId) selectedCamera.value = activeDeviceId
     videoEl.value.srcObject = mediaStream
     streaming.value = true
     pausedByServer.value = false
@@ -134,11 +181,10 @@ async function _start(stationId) {
     // Connect WebSocket — use TOKEN_KEY (not hardcoded 'token')
     // ใช้ window.location.hostname แทน localhost — ทำงานได้ทั้งจาก PC และมือถือ
     const token   = localStorage.getItem(TOKEN_KEY)
-    const wsHost  = window.location.hostname
     const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     wsState.value = 'connecting'
     ws = new WebSocket(
-      `${wsProto}://${wsHost}:8000/api/v1/ws/scan/${stationId}?token=${token}`
+      `${wsProto}://${window.location.host}/api/v1/ws/scan/${stationId}?token=${token}`
     )
 
     ws.onopen = () => { wsState.value = 'open' }
@@ -239,34 +285,70 @@ function _sendFrame() {
 }
 
 // ── Bounding box overlay ──────────────────────────────────────────────────────
+/**
+ * ScanView ส่ง frame แบบ fixed 640×480 เสมอ
+ * Video element ใช้ object-contain → อาจมี letterbox/pillarbox
+ *
+ * ต้องคำนวณ:
+ *   1. rendered area ของ video จริงภายใน container (object-contain)
+ *   2. offset ของ letterbox / pillarbox
+ *   3. scale จาก sent frame (640×480) → rendered area
+ */
 function _drawBBoxes(faces) {
   const canvas = canvasEl.value
   const video  = videoEl.value
   if (!canvas || !video) return
 
-  canvas.width  = video.clientWidth
-  canvas.height = video.clientHeight
+  const cW = video.clientWidth
+  const cH = video.clientHeight
+  canvas.width  = cW
+  canvas.height = cH
 
-  const scaleX = canvas.width  / (video.videoWidth  || canvas.width)
-  const scaleY = canvas.height / (video.videoHeight || canvas.height)
+  // Native video AR vs container AR
+  const videoAR     = (video.videoWidth  || 640) / (video.videoHeight || 480)
+  const containerAR = cW / cH
+
+  let renderedW, renderedH, offsetX, offsetY
+  if (videoAR > containerAR) {
+    // Letterbox: bars บน-ล่าง
+    renderedW = cW
+    renderedH = cW / videoAR
+    offsetX   = 0
+    offsetY   = (cH - renderedH) / 2
+  } else {
+    // Pillarbox: bars ซ้าย-ขวา
+    renderedH = cH
+    renderedW = cH * videoAR
+    offsetX   = (cW - renderedW) / 2
+    offsetY   = 0
+  }
+
+  // Sent frame is always 640×480 — scale to rendered area
+  const scaleX = renderedW / 640
+  const scaleY = renderedH / 480
 
   const ctx = canvas.getContext('2d')
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.clearRect(0, 0, cW, cH)
 
   for (const face of faces) {
     const { x, y, w, h } = face.bbox
+    const dx = offsetX + x * scaleX
+    const dy = offsetY + y * scaleY
+    const dw = w * scaleX
+    const dh = h * scaleY
+
     ctx.strokeStyle = face.status === 'match' ? '#22c55e' : '#ef4444'
     ctx.lineWidth   = 2
-    ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY)
+    ctx.strokeRect(dx, dy, dw, dh)
 
     // Label
     if (face.full_name || face.status === 'unknown') {
       const label = face.status === 'match'
         ? `${face.full_name} ${(face.confidence * 100).toFixed(0)}%`
         : 'Unknown'
-      ctx.fillStyle   = face.status === 'match' ? '#22c55e' : '#ef4444'
-      ctx.font        = 'bold 13px sans-serif'
-      ctx.fillText(label, x * scaleX + 2, y * scaleY - 5)
+      ctx.fillStyle = face.status === 'match' ? '#22c55e' : '#ef4444'
+      ctx.font      = 'bold 13px sans-serif'
+      ctx.fillText(label, dx + 2, dy - 5)
     }
   }
 }

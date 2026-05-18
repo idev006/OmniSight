@@ -68,6 +68,7 @@ class FaceTemplateOut(BaseModel):
     sample_index: int
     quality_score: float
     created_at: Optional[datetime]
+    image_url: Optional[str] = None   # populated at runtime — not stored in DB
     model_config = {"from_attributes": True}
 
 class EnrollmentStatus(BaseModel):

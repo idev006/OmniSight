@@ -14,10 +14,12 @@ Design for plug-and-play multi-camera:
                              closing the old connection gracefully
 """
 import asyncio
+import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -31,7 +33,7 @@ from app.core.security import get_current_user_ws
 from app.core.face_engine import face_engine
 from app.db.postgres import async_session_factory
 from app.db.qdrant import get_qdrant_sync
-from app.db.redis import get_station_filter, redis as _redis
+from app.db.redis import get_station_filter, redis as _redis, increment_unknown_count, get_unknown_alert_threshold
 from app.models.orm import Employee, Department
 from app.models.schemas import BBox, FaceResult, ScanResult
 from app.services.attendance_service import log_attendance
@@ -71,6 +73,16 @@ async def _get_max_fps() -> float:
     except Exception:
         pass
     return float(settings.max_fps_per_camera)
+
+
+async def _get_match_threshold() -> float:
+    try:
+        val = await _redis.get("setting:match_threshold")
+        if val:
+            return max(0.1, min(1.0, float(val)))
+    except Exception:
+        pass
+    return float(settings.match_threshold)
 
 
 @router.websocket("/scan/{station_id}")
@@ -191,6 +203,7 @@ async def scan_ws(
                     )
 
                 faces: list[FaceResult] = []
+                match_threshold = await _get_match_threshold()
 
                 for tracking_id, embedding, bbox in detections:
                     # Qdrant search — synchronous client → thread pool
@@ -202,7 +215,7 @@ async def scan_ws(
                             query_vector=embedding.tolist(),
                             query_filter=qdrant_filter,
                             limit=1,
-                            score_threshold=settings.match_threshold,
+                            score_threshold=match_threshold,
                         )
                     )
 
@@ -231,12 +244,36 @@ async def scan_ws(
                         except Exception as e:
                             logger.warning(f"Employee lookup failed: {e}")
 
-                        logged = await log_attendance(
+                        # Crop face for snapshot evidence (with 25% padding)
+                        face_crop_jpg: Optional[bytes] = None
+                        try:
+                            x1, y1, x2, y2 = bbox
+                            ih, iw = frame.shape[:2]
+                            pad_x = int((x2 - x1) * 0.25)
+                            pad_y = int((y2 - y1) * 0.25)
+                            cx1 = max(0, x1 - pad_x)
+                            cy1 = max(0, y1 - pad_y)
+                            cx2 = min(iw, x2 + pad_x)
+                            cy2 = min(ih, y2 + pad_y)
+                            crop = frame[cy1:cy2, cx1:cx2]
+                            if crop.size > 0:
+                                ok, buf = cv2.imencode(
+                                    '.jpg', crop,
+                                    [cv2.IMWRITE_JPEG_QUALITY, 85]
+                                )
+                                if ok:
+                                    face_crop_jpg = buf.tobytes()
+                        except Exception as _crop_err:
+                            logger.warning(f"Face crop failed: {_crop_err}")
+
+                        log_id = await log_attendance(
                             db=db,
                             employee_id=employee_id,
                             station_id=station_id,
                             confidence_score=confidence,
+                            face_crop_jpg=face_crop_jpg,
                         )
+                        logged = log_id is not None
 
                         await camera_manager.broadcast_attendance(
                             camera_id=camera_id,
@@ -266,6 +303,18 @@ async def scan_ws(
                             bbox={"x": bbox[0], "y": bbox[1],
                                   "w": bbox[2]-bbox[0], "h": bbox[3]-bbox[1]},
                         )
+                        # Unknown face alert — increment 5-min counter, trigger if threshold reached
+                        unknown_count = await increment_unknown_count(station_id)
+                        threshold = await get_unknown_alert_threshold()
+                        if unknown_count >= threshold:
+                            await _redis.publish("omnisight:events", json.dumps({
+                                "event": "unknown_face_alert",
+                                "station_id": station_id,
+                                "camera_id": camera_id,
+                                "count": unknown_count,
+                                "threshold": threshold,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }))
                         faces.append(FaceResult(
                             tracking_id=tracking_id,
                             status="unknown",

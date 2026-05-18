@@ -83,11 +83,17 @@
         <!-- Submit -->
         <button
           class="btn btn-success w-full gap-2"
-          :disabled="enrolledCount < 6 || submitting"
+          :disabled="!canSubmit || submitting"
           @click="submitEnrollment"
         >
           <span v-if="submitting" class="loading loading-spinner loading-sm"></span>
-          {{ submitting ? 'Saving…' : `Submit Enrollment (${enrolledCount}/6)` }}
+          <template v-if="submitting">Saving…</template>
+          <template v-else-if="canSubmit">
+            💾 Save {{ newShotsCount }} New Shot{{ newShotsCount > 1 ? 's' : '' }}
+          </template>
+          <template v-else>
+            {{ enrolledCount }}/6 enrolled — Capture new shots to update
+          </template>
         </button>
 
         <!-- Message -->
@@ -98,7 +104,9 @@
       </div>
 
       <!-- ── Right: 6 Angle Slots ──────────────────────────────────────────── -->
-      <div class="grid grid-cols-3 gap-2">
+      <div class="grid grid-cols-3 gap-2" :class="loadingSlots ? 'opacity-50 pointer-events-none' : ''"
+        :title="loadingSlots ? 'Loading enrolled images…' : ''"
+      >
         <div
           v-for="(angle, i) in ANGLES" :key="i"
           class="relative rounded-xl border-2 overflow-hidden cursor-pointer transition-all duration-150"
@@ -106,8 +114,8 @@
           @click="setActive(i)"
           :title="angle.label + ' — ' + angle.hint"
         >
-          <!-- Captured photo -->
-          <img v-if="slots[i]" :src="slots[i].preview"
+          <!-- Captured photo (new capture) or server-loaded image -->
+          <img v-if="slots[i]" :src="slots[i].preview || slots[i].serverPreview"
             class="w-full aspect-square object-cover" />
 
           <!-- Empty state -->
@@ -129,6 +137,12 @@
           <div v-if="slots[i]"
             class="absolute top-1 right-1 w-5 h-5 bg-success rounded-full flex items-center justify-center shadow">
             <span class="text-success-content text-[10px] font-bold">✓</span>
+          </div>
+
+          <!-- Quality score (server-loaded slots only) -->
+          <div v-if="slots[i]?.qualityScore != null && !slots[i]?.blob"
+            class="absolute bottom-1 left-1 px-1 py-0.5 rounded bg-black/60 text-white text-[9px] font-mono leading-none">
+            {{ (slots[i].qualityScore * 100).toFixed(0) }}%
           </div>
 
           <!-- Slot number -->
@@ -299,6 +313,7 @@ const cameraReady  = ref(false)
 const capturing    = ref(false)
 const flashing     = ref(false)
 const submitting   = ref(false)
+const loadingSlots = ref(false)
 const message      = ref('')
 const messageType  = ref('success')
 
@@ -310,6 +325,9 @@ const activeSlot = computed(() => {
 
 const enrolledCount = computed(() => slots.value.filter(Boolean).length)
 const allDone       = computed(() => enrolledCount.value === 6)
+// canSubmit = มี slot ที่ถ่ายใหม่ (blob) อย่างน้อย 1 ช่อง
+const canSubmit     = computed(() => slots.value.some(s => s?.blob))
+const newShotsCount = computed(() => slots.value.filter(s => s?.blob).length)
 
 let stream = null
 
@@ -366,7 +384,8 @@ function setActive(i) {
 }
 
 function deleteSlot(i) {
-  if (slots.value[i]?.preview) URL.revokeObjectURL(slots.value[i].preview)
+  if (slots.value[i]?.preview)       URL.revokeObjectURL(slots.value[i].preview)
+  if (slots.value[i]?.serverPreview) URL.revokeObjectURL(slots.value[i].serverPreview)
   slots.value[i] = null
 }
 
@@ -382,15 +401,18 @@ async function submitEnrollment() {
   submitting.value = true
   message.value = ''
   try {
+    const newSlots = slots.value.filter(s => s?.blob)
     for (let i = 0; i < 6; i++) {
-      if (!slots.value[i]) continue
+      if (!slots.value[i]?.blob) continue  // skip server-loaded (unchanged) slots
       const fd = new FormData()
       fd.append('sample_index', i)
       fd.append('file', slots.value[i].blob, `sample_${i}.jpg`)
       await api.post(`/api/v1/employees/${route.params.id}/enroll`, fd)
     }
     messageType.value = 'success'
-    message.value = '✅ Enrollment complete! Employee is now active.'
+    message.value = `✅ บันทึก ${newSlots.length} รูปเรียบร้อย — Employee is now active.`
+    // Refresh slots from server to show updated thumbnails
+    await _loadExistingSlots()
   } catch (e) {
     messageType.value = 'error'
     message.value = e.response?.data?.detail || 'Upload failed'
@@ -399,15 +421,56 @@ async function submitEnrollment() {
   }
 }
 
+// ── Load existing enrolled images from server ─────────────────────────────────
+async function _loadExistingSlots() {
+  loadingSlots.value = true
+  try {
+    // Revoke any existing blob URLs first
+    slots.value.forEach(s => {
+      if (s?.preview)       URL.revokeObjectURL(s.preview)
+      if (s?.serverPreview) URL.revokeObjectURL(s.serverPreview)
+    })
+    slots.value = Array(6).fill(null)
+
+    const { data } = await api.get(`/api/v1/employees/${route.params.id}/enrollment`)
+    for (let i = 0; i < 6; i++) {
+      const slot = data.slots[i]
+      if (!slot) continue
+      // Fetch image blob with auth headers (img src cannot send Authorization header)
+      try {
+        const res = await api.get(slot.image_url, { responseType: 'blob' })
+        const serverPreview = URL.createObjectURL(res.data)
+        slots.value[i] = {
+          blob:          null,           // no new blob — server-loaded
+          preview:       null,
+          serverPreview,
+          qualityScore:  slot.quality_score,
+        }
+      } catch {
+        // Image file missing on disk — treat slot as empty so user can re-shoot
+        slots.value[i] = null
+      }
+    }
+  } catch {
+    // enrollment status fetch failed — start fresh
+  } finally {
+    loadingSlots.value = false
+  }
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
   const { data } = await api.get(`/api/v1/employees/${route.params.id}`)
   employee.value = data
+  await _loadExistingSlots()
 })
 
 onUnmounted(() => {
   if (stream) stream.getTracks().forEach(t => t.stop())
-  slots.value.forEach(s => { if (s?.preview) URL.revokeObjectURL(s.preview) })
+  slots.value.forEach(s => {
+    if (s?.preview)       URL.revokeObjectURL(s.preview)
+    if (s?.serverPreview) URL.revokeObjectURL(s.serverPreview)
+  })
 })
 </script>
 

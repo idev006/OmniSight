@@ -381,9 +381,8 @@ function connect() {
   if (!token) return
 
   wsState.value = 'connecting'
-  const wsHost  = window.location.hostname
   const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const url = `${wsProto}://${wsHost}:8000/api/v1/ws/console?token=${encodeURIComponent(token)}`
+  const url = `${wsProto}://${window.location.host}/api/v1/ws/console?token=${encodeURIComponent(token)}`
   ws = new WebSocket(url)
 
   ws.onopen = () => {

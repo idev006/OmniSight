@@ -80,6 +80,7 @@ class AttendanceLog(Base):
     station_id = Column(UUID(as_uuid=True), ForeignKey("stations.id"), nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=text("NOW()"), nullable=False)
     confidence_score = Column(Float, nullable=False)
+    snapshot_path = Column(String(500), nullable=True)   # cropped face JPEG saved at scan time
     employee = relationship("Employee", back_populates="attendance_logs")
     station = relationship("Station", back_populates="attendance_logs")
 

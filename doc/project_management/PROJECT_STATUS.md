@@ -1,6 +1,6 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-18 (Sprint 10 Multi-Camera plug-and-play done)  
+> **อัปเดตล่าสุด:** 2026-05-18 (Sprint 12 — all settings live, face snapshot, quality gate, unknown alert)  
 > **Project Manager / Lead Dev:** idev006  
 > **AI Pair:** Claude Sonnet 4.6  
 > **Repository:** https://github.com/idev006/OmniSight  
@@ -11,9 +11,9 @@
 
 ```
 Phase 1 — Foundation     ████████████████████ 100%  ✅ DONE
-Phase 2 — AI Core        ████████████░░░░░░░░  60%  🔄 IN PROGRESS
+Phase 2 — AI Core        ███████████████░░░░░  75%  🔄 IN PROGRESS
 Phase 3 — HR Features    ████████████░░░░░░░░  60%  🔄 IN PROGRESS
-Phase 4 — Multi-Camera   ████████████████░░░░  80%  🔄 IN PROGRESS
+Phase 4 — Multi-Camera   █████████████████░░░  90%  🔄 IN PROGRESS
 Phase 5 — Production     ░░░░░░░░░░░░░░░░░░░░   0%  ⏳ PENDING
 ```
 
@@ -61,7 +61,7 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | 2.2 | Cooldown ป้องกัน log ซ้ำ (≤5 นาที) | ✅ Done | 🔴 HIGH | Sprint 7: Redis TTL 300s verified |
 | 2.3 | JWT refresh token / expiry ยาวขึ้น | ✅ Done | 🔴 HIGH | Sprint 8: admin ตั้งค่า expire_hours ผ่าน UI Settings ได้ |
 | 2.4 | Anti-spoofing MiniFASNet | ⬜ Todo | 🟡 MED | เพิ่มหลัง attendance log เสร็จ |
-| 2.5 | Face quality gate ก่อน enrollment | ⬜ Todo | 🟡 MED | reject blur/dark images |
+| 2.5 | Face quality gate ก่อน enrollment | ✅ Done | 🟡 MED | Sprint 12: HTTP 422 reject, threshold configurable |
 | 2.6 | Multi-face tracking (ByteTrack) | ⬜ Todo | 🟢 LOW | กรณีกล้องเห็นหลายคน |
 | 2.7 | ONNX provider auto-detect (CUDA/DML) | ⬜ Todo | 🟢 LOW | ตอนนี้ fixed เป็น CPU |
 
@@ -86,6 +86,53 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | S8.11 | LoginView session-expired/deactivated banner | ✅ Done | 2026-05-17 |
 | S8.12 | AppLayout logout confirm dialog | ✅ Done | 2026-05-17 |
 | S8.13 | chapter_22_auth_authorization.md (4 seq diagrams, auth matrix, SSOT design) | ✅ Done | 2026-05-17 |
+
+---
+
+## Sprint 11 — Face Snapshot Evidence ✅ DONE
+**วันที่:** 2026-05-18 (Session 8)  
+**เป้าหมาย:** บันทึกรูปใบหน้าตอน scan match เป็นหลักฐาน + แสดงใน Attendance page
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S11.1 | `snapshot_path` column ใน AttendanceLog ORM | ✅ Done | 2026-05-18 |
+| S11.2 | Alembic migration `c3f8a92b1d74` — add snapshot_path | ✅ Done | 2026-05-18 |
+| S11.3 | `config.py` — `storage_path` absolute path ด้วย `_PROJECT_ROOT` | ✅ Done | 2026-05-18 |
+| S11.4 | `websocket.py` — crop face (25% padding) → JPEG bytes | ✅ Done | 2026-05-18 |
+| S11.5 | `attendance_service.py` — save JPEG to `storage/snapshots/{date}/{log_id}.jpg` | ✅ Done | 2026-05-18 |
+| S11.6 | `attendance.py` — `snapshot_url` field + `GET /{id}/snapshot` endpoint (HR auth) | ✅ Done | 2026-05-18 |
+| S11.7 | `AttendanceView.vue` — SnapshotImg lazy-load thumbnail + fullscreen evidence modal | ✅ Done | 2026-05-18 |
+| S11.8 | `main.py` — `logging.getLogger("app").setLevel(INFO)` + mobile CORS origin | ✅ Done | 2026-05-18 |
+
+**ผลลัพธ์:** attendance log id=27 เป็น record แรกที่มี `snapshot_path` (verified บน disk)
+
+---
+
+## Sprint 12 — All Settings Live + AI Gates ✅ DONE
+**วันที่:** 2026-05-18 (Session 8 ต่อ)  
+**เป้าหมาย:** ทุก setting ใน Settings UI ต้องทำงานจริง + face quality gate + unknown face alert
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S12.1 | `main.py` startup — sync ทุก setting จาก DB → Redis (แก้ setting ไม่ทำงาน) | ✅ Done | 2026-05-18 |
+| S12.2 | `websocket.py` — `_get_match_threshold()` อ่านจาก Redis แบบ live (ก่อนหน้า hardcoded) | ✅ Done | 2026-05-18 |
+| S12.3 | `redis.py` — `get_min_face_quality()`, `increment_unknown_count()`, `get_unknown_alert_threshold()` | ✅ Done | 2026-05-18 |
+| S12.4 | `enrollment.py` — face quality gate: reject upload ถ้า score < threshold (HTTP 422) | ✅ Done | 2026-05-18 |
+| S12.5 | `websocket.py` — unknown face rolling counter (Redis INCR + 5 min expire) + alert publish | ✅ Done | 2026-05-18 |
+| S12.6 | `start-dev.bat` — `taskkill /F /IM python.exe` ก่อน start (ป้องกัน zombie process) | ✅ Done | 2026-05-18 |
+| S12.7 | Debug instrumentation cleanup (module marker, file-write diagnostic, print statements) | ✅ Done | 2026-05-18 |
+
+**Settings ที่ทำงานครบแล้ว (8/8):**
+| Setting Key | ค่าที่ admin ตั้ง | ทำงานผ่าน |
+|-------------|-----------------|---------|
+| `access_token_expire_hours` | 8h | DB query ตอน login |
+| `match_threshold` | 0.70 | Redis `setting:match_threshold` |
+| `min_face_quality` | 0.60 | Redis `setting:min_face_quality` |
+| `cooldown_seconds` | 10s | Redis `setting:cooldown_seconds` |
+| `unknown_face_alert` | 5 | Redis `setting:unknown_face_alert` |
+| `max_fps_per_camera` | 15 | Redis `setting:max_fps_per_camera` |
+| `inference_workers` | 2 | Config at startup (restart required) |
+| `face_detect_size` | 640 | Config at startup (restart required) |
 
 ---
 
@@ -164,6 +211,8 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | BUG-002 | Orphaned Qdrant vector (7 vectors แทนที่จะเป็น 6) | Low | 🟡 Open |
 | BUG-003 | Face detection ล้มเหลวสำหรับรูปขนาดเล็ก 640x480 (biden.jpg แนวตั้ง) | Info | ✅ By Design |
 | BUG-004 | `PointIdsList` แทน raw list ใน Qdrant delete — แก้แล้ว | Medium | ✅ Fixed |
+| BUG-005 | uvicorn `--reload` Windows zombie process — กระบวนการเก่าถือ port 8000 หลังปิด terminal | High | ✅ Fixed Sprint 12: `taskkill` ใน `start-dev.bat` |
+| BUG-006 | Settings ทุกตัว (ยกเว้น `access_token_expire_hours`) ไม่ทำงาน — Redis key ว่างเปล่า | High | ✅ Fixed Sprint 12: startup DB→Redis sync + `_get_match_threshold()` |
 
 ---
 
@@ -188,6 +237,10 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | Enrollment quality score | 0.799 | ≥ 0.75 |
 | WebSocket round-trip | ~10s (cold) / <2s (warm) CPU | < 500ms (GPU) |
 | Attendance log insert | ✅ verified (DB: +1 record) | — |
-| Cooldown ป้องกัน duplicate | ✅ verified (2nd scan: logged=False) | 5 min |
+| Cooldown ป้องกัน duplicate | ✅ verified (2nd scan: logged=False) | configurable (default 300s) |
+| Face snapshot saved | ✅ verified (id=27, 8468 bytes JPEG) | per match |
+| Unknown face alert | ✅ verified (Redis INCR + publish) | threshold configurable |
+| Min face quality gate | ✅ verified (HTTP 422 if below threshold) | threshold configurable |
+| Settings live reload | ✅ 8/8 settings working (DB→Redis sync) | no restart needed |
 | Qdrant collection status | 🟢 green | green |
 | API health | ✅ all endpoints 200 | — |

@@ -1,5 +1,10 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+# Resolve storage relative to project root regardless of CWD
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_STORAGE_DEFAULT = str(_PROJECT_ROOT / "storage" / "faces")
 
 
 class Settings(BaseSettings):
@@ -20,7 +25,7 @@ class Settings(BaseSettings):
     access_token_expire_hours: int = 8
 
     # Storage
-    storage_path: str = "../storage/faces"
+    storage_path: str = _STORAGE_DEFAULT
 
     # ONNX
     onnxruntime_provider: str = "cpu"

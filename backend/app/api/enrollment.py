@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -9,6 +10,7 @@ from app.models.schemas import EnrollmentStatus, FaceTemplateOut
 from app.core.config import get_settings
 from app.core.face_engine import face_engine
 from app.core.security import require_hr, CurrentUser
+from app.db.redis import get_min_face_quality
 from qdrant_client.models import PointStruct, PointIdsList
 import uuid, shutil
 from pathlib import Path
@@ -33,16 +35,52 @@ async def get_enrollment_status(
         raise HTTPException(404, "Employee not found")
 
     slot_map = {t.sample_index: t for t in emp.face_templates}
-    slots = [
-        FaceTemplateOut.model_validate(slot_map[i]) if i in slot_map else None
-        for i in range(6)
-    ]
+    slots = []
+    for i in range(6):
+        if i in slot_map:
+            t = slot_map[i]
+            slots.append(FaceTemplateOut(
+                sample_index=t.sample_index,
+                quality_score=t.quality_score,
+                created_at=t.created_at,
+                image_url=f"/api/v1/employees/{employee_id}/enroll/{i}/image",
+            ))
+        else:
+            slots.append(None)
     return EnrollmentStatus(
         employee_id=employee_id,
         slots=slots,
         completed=len(emp.face_templates),
         is_ready=len(emp.face_templates) >= settings.min_templates_to_activate,
     )
+
+
+@router.get("/{employee_id}/enroll/{sample_index}/image")
+async def get_face_image(
+    employee_id: uuid.UUID,
+    sample_index: int,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
+    """ดึงรูปใบหน้าที่ enroll ไว้ (auth required — รูปเป็น sensitive data)"""
+    result = await db.execute(
+        select(Employee)
+        .options(selectinload(Employee.face_templates))
+        .where(Employee.id == employee_id)
+    )
+    emp = result.scalar_one_or_none()
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+
+    template = next((t for t in emp.face_templates if t.sample_index == sample_index), None)
+    if not template:
+        raise HTTPException(404, "Face template not found")
+
+    img_path = Path(template.image_path)
+    if not img_path.exists():
+        raise HTTPException(404, "Image file not found on disk")
+
+    return FileResponse(img_path, media_type="image/jpeg")
 
 
 @router.post("/{employee_id}/enroll", status_code=201)
@@ -82,6 +120,14 @@ async def upload_face_sample(
         raise HTTPException(422, "No face detected in image")
     embedding = embeddings[0]
     quality = face_engine.get_quality_score(img)
+    min_quality = await get_min_face_quality()
+    if quality < min_quality:
+        img_path.unlink(missing_ok=True)
+        raise HTTPException(
+            422,
+            f"Face quality too low ({quality:.2f} < {min_quality:.2f}) — "
+            "ensure good lighting and face the camera directly"
+        )
 
     # Remove existing template for this slot if any
     existing = next((t for t in emp.face_templates if t.sample_index == sample_index), None)
@@ -91,6 +137,7 @@ async def upload_face_sample(
             points_selector=PointIdsList(points=[str(existing.qdrant_id)]),
         )
         await db.delete(existing)
+        await db.flush()  # ensure DELETE executes before INSERT (avoid unique constraint violation)
 
     # Insert into Qdrant
     qdrant_id = uuid.uuid4()

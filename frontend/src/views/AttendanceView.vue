@@ -67,8 +67,18 @@
         </template>
         <template #cell-full_name="{ row }">
           <div class="flex items-center gap-2">
-            <div class="avatar placeholder">
-              <div class="bg-neutral text-neutral-content rounded-full w-6 text-xs">
+            <!-- Face snapshot thumbnail — click to enlarge -->
+            <div
+              class="avatar shrink-0 cursor-pointer"
+              :class="row.snapshot_url ? '' : 'placeholder'"
+              @click="row.snapshot_url && openSnapshot(row)"
+              :title="row.snapshot_url ? 'คลิกดูใบหน้าหลักฐาน' : 'ไม่มีภาพหลักฐาน'"
+            >
+              <div v-if="row.snapshot_url"
+                class="w-8 h-8 rounded-full ring-1 ring-success/40 overflow-hidden bg-base-300">
+                <SnapshotImg :url="row.snapshot_url" />
+              </div>
+              <div v-else class="bg-neutral text-neutral-content rounded-full w-8 h-8 flex items-center justify-center text-xs">
                 <span>{{ (row.full_name || '?')[0] }}</span>
               </div>
             </div>
@@ -202,15 +212,64 @@
     </template>
 
   </div>
+
+  <!-- ── Face Snapshot Modal ──────────────────────────────────────────────── -->
+  <dialog ref="snapshotModal" class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box max-w-sm p-5" v-if="snapshotRow">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <div class="font-bold">{{ snapshotRow.full_name }}</div>
+          <div class="text-xs text-base-content/40 mt-0.5">
+            {{ formatDate(snapshotRow.timestamp) }} {{ formatTime(snapshotRow.timestamp) }}
+            · {{ snapshotRow.station_name }}
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-circle" @click="snapshotModal.close()">✕</button>
+      </div>
+
+      <!-- Snapshot image -->
+      <div class="rounded-xl overflow-hidden bg-base-300 aspect-square flex items-center justify-center">
+        <img v-if="snapshotBlobUrl" :src="snapshotBlobUrl"
+          class="w-full h-full object-contain" alt="Face evidence" />
+        <span v-else class="loading loading-spinner loading-lg text-base-content/30"></span>
+      </div>
+
+      <!-- Metadata -->
+      <div class="flex items-center justify-between mt-3 text-xs text-base-content/50">
+        <span class="font-mono">{{ snapshotRow.emp_code }}</span>
+        <span class="badge badge-sm font-mono"
+          :class="snapshotRow.confidence_score >= 0.85 ? 'badge-success'
+                : snapshotRow.confidence_score >= 0.72 ? 'badge-warning' : 'badge-error'">
+          {{ (snapshotRow.confidence_score * 100).toFixed(1) }}% confidence
+        </span>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, defineComponent, h } from 'vue'
 import api from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import DataTable from '@/components/DataTable.vue'
 
 const toast = useToast()
+
+// ── SnapshotImg — lazy-load face thumbnail with auth header ───────────────────
+// <img src="..."> ไม่ส่ง Authorization header ดังนั้น fetch เองแล้วสร้าง blob URL
+const SnapshotImg = defineComponent({
+  props: { url: String },
+  setup(props) {
+    const blobUrl = ref(null)
+    api.get(props.url, { responseType: 'blob' })
+      .then(res => { blobUrl.value = URL.createObjectURL(res.data) })
+      .catch(() => {})
+    return () => blobUrl.value
+      ? h('img', { src: blobUrl.value, class: 'w-full h-full object-cover' })
+      : h('div', { class: 'w-full h-full bg-base-300' })
+  },
+})
 
 // ── Shared ────────────────────────────────────────────────────────────────────
 const departments = ref([])
@@ -232,6 +291,23 @@ const columns = [
   { key: 'station_name',     label: 'Station',    hideMobile: true },
   { key: 'confidence_score', label: 'Confidence' },
 ]
+
+// ── Snapshot modal ─────────────────────────────────────────────────────────────
+const snapshotModal  = ref(null)
+const snapshotRow    = ref(null)
+const snapshotBlobUrl = ref(null)
+
+async function openSnapshot(row) {
+  snapshotRow.value    = row
+  snapshotBlobUrl.value = null
+  snapshotModal.value.showModal()
+  try {
+    const res = await api.get(row.snapshot_url, { responseType: 'blob' })
+    snapshotBlobUrl.value = URL.createObjectURL(res.data)
+  } catch {
+    toast.error('ไม่สามารถโหลดภาพหลักฐานได้')
+  }
+}
 
 const filteredLogs = computed(() => {
   const q = search.value.toLowerCase().trim()

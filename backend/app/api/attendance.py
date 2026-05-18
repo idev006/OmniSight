@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, cast, Date
 from sqlalchemy.orm import selectinload
@@ -6,6 +7,7 @@ from app.db.postgres import get_db
 from app.models.orm import AttendanceLog, Employee, Station, Department
 from app.core.security import require_hr, CurrentUser
 from datetime import date, datetime, timezone
+from pathlib import Path
 import calendar
 
 router = APIRouter()
@@ -51,9 +53,33 @@ async def list_attendance(
             "station_name": log.station.name if log.station else None,
             "timestamp": log.timestamp,
             "confidence_score": log.confidence_score,
+            "snapshot_url": f"/api/v1/attendance/{log.id}/snapshot" if log.snapshot_path else None,
         }
         for log in logs
     ]
+
+
+@router.get("/{log_id}/snapshot")
+async def get_attendance_snapshot(
+    log_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
+    """ดึง face snapshot ที่บันทึกตอน scan (auth required — เป็น biometric evidence)"""
+    result = await db.execute(
+        select(AttendanceLog).where(AttendanceLog.id == log_id)
+    )
+    log = result.scalar_one_or_none()
+    if not log:
+        raise HTTPException(404, "Attendance record not found")
+    if not log.snapshot_path:
+        raise HTTPException(404, "No snapshot for this record")
+
+    path = Path(log.snapshot_path)
+    if not path.exists():
+        raise HTTPException(404, "Snapshot file not found on disk")
+
+    return FileResponse(path, media_type="image/jpeg")
 
 
 @router.get("/summary")

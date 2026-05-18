@@ -14,12 +14,12 @@ export default defineConfig({
     port: 5173,
     host: true,   // รับ connection จากมือถือใน network เดียวกัน (0.0.0.0)
     proxy: {
+      // HTTP API + WebSocket upgrade ทั้งหมดผ่าน /api prefix
+      // ws:true ทำให้ Vite proxy handle WebSocket upgrade ได้
+      // wss (mobile) → Vite proxy → ws://127.0.0.1:8000 (backend plain HTTP)
       '/api': {
-        target: 'http://127.0.0.1:8000',  // explicit IPv4 — Node 18+ resolves 'localhost' as ::1 (IPv6) first
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-      },
-      '/ws': {
-        target: 'ws://127.0.0.1:8000',
         ws: true,
       },
     },

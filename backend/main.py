@@ -13,6 +13,9 @@ from app.services.camera_manager import camera_manager
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# Set app loggers to INFO so application logs appear alongside uvicorn logs
+logging.getLogger("app").setLevel(logging.INFO)
+
 
 async def _seed_admin():
     """สร้าง admin user เริ่มต้น ถ้ายังไม่มีใน DB"""
@@ -57,6 +60,12 @@ async def _seed_admin():
                 ))
 
         await db.commit()
+
+        # Sync all settings to Redis on startup so live-reload keys are always warm
+        from app.db.redis import redis as _redis
+        all_settings = await db.execute(select(SystemSetting))
+        for s in all_settings.scalars().all():
+            await _redis.set(f"setting:{s.key}", s.value)
 
 
 @asynccontextmanager

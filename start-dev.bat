@@ -4,6 +4,14 @@ echo ========================================
 echo   OmniSight - Dev Mode
 echo ========================================
 echo.
+
+echo [0/2] Cleaning up old Python processes...
+taskkill /F /IM python.exe >nul 2>&1
+taskkill /F /IM uvicorn.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
+echo Done.
+echo.
+
 echo [1/2] Starting Backend  (http://localhost:8000)
 echo [2/2] Starting Frontend (http://localhost:5173)
 echo.

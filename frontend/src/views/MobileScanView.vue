@@ -42,43 +42,58 @@
         </div>
       </div>
 
-      <!-- ── HUD: Result overlay (MATCH) ───────────────────────────────── -->
-      <Transition name="result-pop">
-        <div v-if="overlay.visible && overlay.type === 'match'"
+      <!-- ── HUD: Result overlay (MATCH / UNKNOWN) ────────────────────────
+           Single <Transition> with mode="out-in" + :key ensures the old card
+           fully leaves before the new one enters — prevents both overlays
+           being visible simultaneously during the transition animation.
+      ──────────────────────────────────────────────────────────────────── -->
+      <Transition name="result-pop" mode="out-in"
+        @before-leave="() => { _transitioning = true }"
+        @after-leave="() => { _transitioning = false; if (_pendingFace) { _applyOverlay(_pendingFace); _pendingFace = null } }"
+      >
+        <div v-if="overlay.visible"
+          :key="overlay.type"
           class="absolute inset-x-4 rounded-2xl px-6 py-5 flex items-center gap-4"
-          style="top: 50%; transform: translateY(-50%); background: rgba(22,163,74,0.92); backdrop-filter: blur(8px);">
-          <div class="text-5xl leading-none shrink-0">✅</div>
-          <div class="min-w-0 flex-1">
-            <div class="text-white font-black leading-tight" style="font-size: clamp(22px,6vw,32px)">
-              {{ overlay.full_name }}
+          :style="{
+            top: '50%',
+            transform: 'translateY(-50%)',
+            backdropFilter: 'blur(8px)',
+            background: overlay.type === 'match'
+              ? 'rgba(22,163,74,0.92)'
+              : 'rgba(220,38,38,0.92)',
+          }"
+        >
+          <!-- MATCH content -->
+          <template v-if="overlay.type === 'match'">
+            <div class="text-5xl leading-none shrink-0">✅</div>
+            <div class="min-w-0 flex-1">
+              <div class="text-white font-black leading-tight" style="font-size: clamp(22px,6vw,32px)">
+                {{ overlay.full_name }}
+              </div>
+              <div v-if="overlay.dept_name" class="text-white/80 font-medium mt-0.5" style="font-size: clamp(14px,4vw,18px)">
+                {{ overlay.dept_name }}
+              </div>
+              <div class="flex items-center gap-3 mt-2">
+                <span v-if="overlay.emp_code" class="text-white/60 text-xs font-mono">{{ overlay.emp_code }}</span>
+                <span v-if="overlay.confidence" class="text-white/60 text-xs font-mono">
+                  {{ (overlay.confidence * 100).toFixed(1) }}%
+                </span>
+                <span v-if="overlay.attendance_logged" class="text-white text-xs font-bold bg-white/20 px-2 py-0.5 rounded-full">
+                  ✓ Logged
+                </span>
+                <span v-else class="text-white/50 text-xs">Already logged</span>
+              </div>
             </div>
-            <div v-if="overlay.dept_name" class="text-white/80 font-medium mt-0.5" style="font-size: clamp(14px,4vw,18px)">
-              {{ overlay.dept_name }}
-            </div>
-            <div class="flex items-center gap-3 mt-2">
-              <span v-if="overlay.emp_code" class="text-white/60 text-xs font-mono">{{ overlay.emp_code }}</span>
-              <span v-if="overlay.confidence" class="text-white/60 text-xs font-mono">
-                {{ (overlay.confidence * 100).toFixed(1) }}%
-              </span>
-              <span v-if="overlay.attendance_logged" class="text-white text-xs font-bold bg-white/20 px-2 py-0.5 rounded-full">
-                ✓ Logged
-              </span>
-              <span v-else class="text-white/50 text-xs">Already logged</span>
-            </div>
-          </div>
-        </div>
-      </Transition>
+          </template>
 
-      <!-- ── HUD: Result overlay (UNKNOWN) ─────────────────────────────── -->
-      <Transition name="result-pop">
-        <div v-if="overlay.visible && overlay.type === 'unknown'"
-          class="absolute inset-x-4 rounded-2xl px-6 py-5 flex items-center gap-4"
-          style="top: 50%; transform: translateY(-50%); background: rgba(220,38,38,0.92); backdrop-filter: blur(8px);">
-          <div class="text-5xl leading-none shrink-0 animate-pulse">⚠️</div>
-          <div>
-            <div class="text-white font-black" style="font-size: clamp(20px,5.5vw,28px)">ใบหน้าไม่รู้จัก</div>
-            <div class="text-white/80 mt-1" style="font-size: clamp(13px,3.5vw,16px)">กรุณาตรวจสอบ</div>
-          </div>
+          <!-- UNKNOWN content -->
+          <template v-else>
+            <div class="text-5xl leading-none shrink-0 animate-pulse">⚠️</div>
+            <div>
+              <div class="text-white font-black" style="font-size: clamp(20px,5.5vw,28px)">ใบหน้าไม่รู้จัก</div>
+              <div class="text-white/80 mt-1" style="font-size: clamp(13px,3.5vw,16px)">กรุณาตรวจสอบ</div>
+            </div>
+          </template>
         </div>
       </Transition>
 
@@ -108,14 +123,36 @@
       <!-- Controls row -->
       <div class="flex items-center gap-3">
 
-        <!-- Camera flip -->
-        <button class="btn btn-circle btn-sm btn-ghost text-white/60 shrink-0"
-          @click="flipCamera" :disabled="streaming" title="Flip camera">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-        </button>
+        <!-- Camera selector
+             · 3+ cameras → dropdown (show all by label)
+             · exactly 2  → flip button (cycle front ↔ back)
+             · 0-1 camera → hidden
+             Both work while streaming (switch on-the-fly, no WS reconnect)
+        -->
+        <div class="shrink-0">
+          <!-- Dropdown for 3+ cameras -->
+          <select v-if="cameras.length > 2"
+            v-model="selectedCameraId"
+            class="select select-sm bg-white/10 border-white/20 text-white text-xs w-36"
+          >
+            <option v-for="(cam, idx) in cameras" :key="cam.deviceId" :value="cam.deviceId"
+              class="text-black bg-white">
+              {{ cam.label || `Camera ${idx + 1}` }}
+            </option>
+          </select>
+
+          <!-- Flip button for exactly 2 cameras -->
+          <button v-else-if="cameras.length === 2"
+            class="btn btn-circle btn-sm btn-ghost"
+            :class="switchingCamera ? 'loading text-white/30' : 'text-white/60'"
+            @click="flipCamera"
+            :title="switchingCamera ? 'Switching…' : 'Flip camera'">
+            <svg v-if="!switchingCamera" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </button>
+        </div>
 
         <!-- Start / Stop -->
         <button class="flex-1 btn text-base font-bold"
@@ -157,7 +194,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { TOKEN_KEY } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import api from '@/api/client'
@@ -182,13 +219,23 @@ const audioEnabled   = ref(true)
 const wakeLockActive = ref(false)
 const lastMatchName  = ref('')
 
-let ws            = null
-let mediaStream   = null
-let _frameTimer   = null
-let _fpsTimer     = null
-let _frameCounter = 0
-let _destroyed    = false
-let _wakeLock     = null
+// ── Camera selection ──────────────────────────────────────────────────────────
+const cameras          = ref([])    // MediaDeviceInfo[]
+const selectedCameraId = ref('')    // deviceId ที่เลือก ('' = ใช้ facingMode)
+const switchingCamera  = ref(false) // กำลังสลับกล้อง — แสดง loading ที่ปุ่ม
+
+let ws              = null
+let mediaStream     = null
+let _frameTimer     = null
+let _fpsTimer       = null
+let _frameCounter   = 0
+let _destroyed      = false
+let _wakeLock       = null
+let _offscreenCanvas = null  // reused across frames — avoids per-frame GPU alloc
+let _offscreenCtx    = null
+let _bboxCtx         = null  // cached canvas 2D context for bbox overlay
+// Cached frame geometry — recalculated only on resize, not every frame
+let _geo = null  // { sx, sy, sw, sh, SEND_W, SEND_H, displayW, displayH }
 
 // ── Overlay state (HUD result card) ──────────────────────────────────────────
 const overlay = ref({
@@ -206,6 +253,13 @@ let _overlayTimer = null
 // Map<tracking_id, timestamp_ms> — cooldown 3 s per face
 const _audioCooldown = new Map()
 const AUDIO_COOLDOWN_MS = 3000
+
+// ── Unknown debounce ──────────────────────────────────────────────────────────
+// ไม่แสดง "ไม่รู้จัก" ทันที — รอ N frames ติดกันก่อน
+// เหตุผล: frame แรกมักยังจำแนกไม่ได้ ถ้า frame ถัดไป match ได้ → ไม่ควรแสดง red ให้สับสน
+// N=2 ที่ 2fps = รอ ~1s ก่อน alert unknown จริง
+let _unknownFrames = 0
+const UNKNOWN_HOLD_FRAMES = 2
 
 // ── WS status ─────────────────────────────────────────────────────────────────
 const wsState = ref('disconnected')
@@ -295,6 +349,14 @@ function _handleAudioFeedback(face) {
   if (now - lastPlayed < AUDIO_COOLDOWN_MS) return   // cooldown — skip
   _audioCooldown.set(face.tracking_id, now)
 
+  // Trim stale entries from audioCooldown Map (prevents unbounded growth in long sessions)
+  if (_audioCooldown.size > 30) {
+    const cutoff = now - AUDIO_COOLDOWN_MS
+    for (const [id, ts] of _audioCooldown) {
+      if (ts < cutoff) _audioCooldown.delete(id)
+    }
+  }
+
   if (face.status === 'match') {
     if (face.attendance_logged) {
       // First log today — prominent beep + TTS
@@ -313,8 +375,21 @@ function _handleAudioFeedback(face) {
 }
 
 // ── Result overlay ────────────────────────────────────────────────────────────
+// _pendingOverlay: ถ้า transition กำลัง out → รอก่อน แล้วค่อย show ใหม่
+let _transitioning = false
+let _pendingFace   = null
+
 function _showOverlay(face) {
-  if (_overlayTimer) clearTimeout(_overlayTimer)
+  if (_transitioning) {
+    // Queue the latest face — will be applied after current leave finishes
+    _pendingFace = face
+    return
+  }
+  _applyOverlay(face)
+}
+
+function _applyOverlay(face) {
+  if (_overlayTimer) { clearTimeout(_overlayTimer); _overlayTimer = null }
 
   if (face.status === 'match') {
     overlay.value = {
@@ -326,18 +401,20 @@ function _showOverlay(face) {
       attendance_logged: face.attendance_logged,
     }
     lastMatchName.value = face.full_name || ''
-    // Auto-dismiss match card after 2.5 s
     _overlayTimer = setTimeout(() => { overlay.value.visible = false }, 2500)
-
   } else {
-    overlay.value = { visible: true, type: 'unknown',
-      full_name: '', dept_name: '', emp_code: '', confidence: 0, attendance_logged: false }
-    // Unknown card stays until next frame clears it (handled in onmessage)
+    overlay.value = {
+      visible: true, type: 'unknown',
+      full_name: '', dept_name: '', emp_code: '', confidence: 0, attendance_logged: false,
+    }
+    _overlayTimer = setTimeout(() => { overlay.value.visible = false }, 4000)
   }
 }
 
 function _clearOverlay() {
-  if (_overlayTimer) clearTimeout(_overlayTimer)
+  if (_overlayTimer) { clearTimeout(_overlayTimer); _overlayTimer = null }
+  _pendingFace   = null
+  _transitioning = false
   overlay.value.visible = false
 }
 
@@ -348,6 +425,7 @@ onMounted(async () => {
     stations.value = data
     if (data.length === 1) selectedStationId.value = data[0].id
   } catch { toast.error('Failed to load stations') }
+  await _enumerateCameras()
   document.addEventListener('visibilitychange', _onVisibilityChange)
 })
 
@@ -357,6 +435,14 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', _onVisibilityChange)
   _audioCooldown.clear()
 })
+
+// ── Camera enumeration ────────────────────────────────────────────────────────
+async function _enumerateCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    cameras.value = devices.filter(d => d.kind === 'videoinput')
+  } catch { /* ignore */ }
+}
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 async function _openCamera() {
@@ -371,24 +457,74 @@ async function _openCamera() {
     )
   }
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
+
+  // ถ้าเลือก deviceId ตรงๆ → ใช้ exact deviceId
+  // ยังไม่ได้เลือก → ใช้ facingMode: environment (กล้องหลัง) เป็นค่าเริ่มต้น
+  const videoConstraints = selectedCameraId.value
+    ? { deviceId: { exact: selectedCameraId.value }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } }
+    : { facingMode: facingMode.value, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } }
+
   mediaStream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: facingMode.value, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } },
+    video: videoConstraints,
     audio: false,
   })
+  // Re-enumerate หลังได้ permission → ได้ label ถูกต้อง
+  await _enumerateCameras()
+  // อัปเดต selectedCameraId ให้ตรงกับกล้องที่ใช้จริง
+  const activeId = mediaStream.getVideoTracks()[0]?.getSettings()?.deviceId
+  if (activeId) selectedCameraId.value = activeId
   videoEl.value.srcObject = mediaStream
   await new Promise(r => { videoEl.value.onloadedmetadata = r })
 }
 
+// ── Watch camera selection → switch on-the-fly ───────────────────────────────
+// เมื่อผู้ใช้เลือกกล้องใหม่ (dropdown หรือ flip) ขณะ streaming อยู่
+// → สลับกล้องทันทีโดยไม่ต้อง restart WebSocket
+watch(selectedCameraId, async (newId, oldId) => {
+  if (!oldId || newId === oldId || !streaming.value) return
+  await _switchCamera()
+})
+
+async function _switchCamera() {
+  if (switchingCamera.value) return   // ป้องกัน double-click
+  switchingCamera.value = true
+  try {
+    _stopFrameLoop()
+    // หยุดเฉพาะ media stream — WebSocket ยังเปิดอยู่
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(t => t.stop())
+      mediaStream = null
+    }
+    if (videoEl.value) videoEl.value.srcObject = null
+    // เปิดกล้องใหม่ด้วย selectedCameraId ที่เปลี่ยนไป
+    await _openCamera()
+    _startFrameLoop(2)
+  } catch (e) {
+    toast.error('Camera switch failed: ' + (e.message || e))
+    stopStream()
+  } finally {
+    switchingCamera.value = false
+  }
+}
+
+// ── Flip camera (cycle through cameras list) ─────────────────────────────────
+// สำหรับโทรศัพท์ที่มี 2 กล้อง: toggle กล้องหน้า ↔ กล้องหลัง
 function flipCamera() {
-  facingMode.value = facingMode.value === 'environment' ? 'user' : 'environment'
+  if (cameras.value.length < 2 || switchingCamera.value) return
+  const currentIdx = cameras.value.findIndex(c => c.deviceId === selectedCameraId.value)
+  const nextIdx    = (currentIdx + 1) % cameras.value.length
+  selectedCameraId.value = cameras.value[nextIdx].deviceId
+  // watch(selectedCameraId) จะ trigger _switchCamera() อัตโนมัติถ้า streaming อยู่
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function _connectWS(stationId) {
-  const token    = localStorage.getItem(TOKEN_KEY)
-  const wsHost   = window.location.hostname
-  const wsProto  = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const url      = `${wsProto}://${wsHost}:8000/api/v1/ws/scan/${stationId}?token=${token}`
+  const token   = localStorage.getItem(TOKEN_KEY)
+  // ใช้ same origin (host:port) เหมือน frontend — ผ่าน Vite proxy
+  // wss://192.168.1.170:5173/api/... → proxy → ws://127.0.0.1:8000/api/...
+  // backend ไม่ต้องรู้จัก TLS เลย
+  const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const url     = `${wsProto}://${window.location.host}/api/v1/ws/scan/${stationId}?token=${token}`
   wsState.value = 'connecting'
   ws = new WebSocket(url)
 
@@ -412,15 +548,30 @@ function _connectWS(stationId) {
       drawBBoxes(faces)
 
       if (faces.length === 0) {
-        // No faces in frame — clear unknown overlay (match auto-dismisses via timer)
+        // ไม่มีใบหน้าในเฟรม — reset unknown counter + clear unknown overlay
+        _unknownFrames = 0
         if (overlay.value.type === 'unknown') _clearOverlay()
         return
       }
 
-      // Process each face — show overlay for the most prominent one (first)
-      // Play audio for ALL faces in frame
-      faces.forEach(face => _handleAudioFeedback(face))
-      _showOverlay(faces[0])
+      // แยก match / unknown
+      const matchFace   = faces.find(f => f.status === 'match')
+      const unknownFace = faces.find(f => f.status === 'unknown')
+
+      if (matchFace) {
+        // Match → reset unknown counter, แสดงทันที
+        _unknownFrames = 0
+        faces.forEach(face => _handleAudioFeedback(face))
+        _showOverlay(matchFace)
+      } else if (unknownFace) {
+        // Unknown → นับ frame ติดกัน ถึง threshold ค่อยแสดง
+        _unknownFrames++
+        if (_unknownFrames >= UNKNOWN_HOLD_FRAMES) {
+          faces.forEach(face => _handleAudioFeedback(face))
+          _showOverlay(unknownFace)
+        }
+        // ยังไม่ถึง threshold → วาด bbox อย่างเดียว ไม่แสดง overlay
+      }
 
     } catch { /* ignore malformed */ }
   }
@@ -447,31 +598,93 @@ function _startFrameLoop(fps = 2) {
 function _stopFrameLoop() {
   if (_frameTimer) { clearInterval(_frameTimer); _frameTimer = null }
 }
+
+/**
+ * Capture the EXACT portion of the video that is visible on screen.
+ *
+ * The video uses object-fit:cover → part of the native frame is cropped.
+ * We reproduce the same crop in an offscreen canvas so that:
+ *   - backend gets the same image the user sees
+ *   - bbox coordinates map 1-to-1 back to screen pixels
+ *
+ * Sent frame size: SEND_W × SEND_H = 640 × (640 * clientH / clientW)
+ */
+function _computeGeo(video) {
+  const displayW  = video.clientWidth  || 640
+  const displayH  = video.clientHeight || 480
+  const videoW    = video.videoWidth
+  const videoH    = video.videoHeight
+  const videoAR   = videoW / videoH
+  const displayAR = displayW / displayH
+  let sx, sy, sw, sh
+  if (videoAR > displayAR) {
+    sh = videoH; sw = videoH * displayAR; sx = (videoW - sw) / 2; sy = 0
+  } else {
+    sw = videoW; sh = videoW / displayAR; sx = 0; sy = (videoH - sh) / 2
+  }
+  const SEND_W = 640
+  const SEND_H = Math.round(SEND_W / displayAR)
+  return { sx, sy, sw, sh, SEND_W, SEND_H, displayW, displayH }
+}
+
 function _sendFrame() {
   if (!ws || ws.readyState !== WebSocket.OPEN) return
   const video = videoEl.value
   if (!video || !video.videoWidth) return
-  const offscreen = document.createElement('canvas')
-  offscreen.width  = 640
-  offscreen.height = Math.round(640 * video.videoHeight / video.videoWidth)
-  offscreen.getContext('2d').drawImage(video, 0, 0, offscreen.width, offscreen.height)
-  offscreen.toBlob((blob) => {
+
+  // Recompute geometry only when video/display size changes
+  if (!_geo || _geo.displayW !== video.clientWidth || _geo.displayH !== video.clientHeight
+            || _geo._videoW !== video.videoWidth   || _geo._videoH !== video.videoHeight) {
+    _geo = { ..._computeGeo(video), _videoW: video.videoWidth, _videoH: video.videoHeight }
+  }
+  const { sx, sy, sw, sh, SEND_W, SEND_H } = _geo
+
+  // Reuse offscreen canvas — creating a new one every frame leaks GPU memory
+  if (!_offscreenCanvas) {
+    _offscreenCanvas = document.createElement('canvas')
+    _offscreenCtx    = _offscreenCanvas.getContext('2d')
+  }
+  if (_offscreenCanvas.width !== SEND_W || _offscreenCanvas.height !== SEND_H) {
+    _offscreenCanvas.width  = SEND_W
+    _offscreenCanvas.height = SEND_H
+  }
+  _offscreenCtx.drawImage(video, sx, sy, sw, sh, 0, 0, SEND_W, SEND_H)
+
+  // Send Blob directly — no arrayBuffer() conversion needed, saves one async hop
+  _offscreenCanvas.toBlob((blob) => {
     if (!blob || !ws || ws.readyState !== WebSocket.OPEN) return
-    blob.arrayBuffer().then((buf) => { ws.send(buf); frameCount.value++; _frameCounter++ })
+    ws.send(blob)
+    frameCount.value++
+    _frameCounter++
   }, 'image/jpeg', 0.70)
 }
 
 // ── BBox overlay ──────────────────────────────────────────────────────────────
+/**
+ * Scale bbox from sent-frame coordinates → screen pixels.
+ * Sent frame = 640 × (640 * clientH / clientW)  ← same ratio as screen
+ * So scaleX = clientW / 640,  scaleY = clientH / SEND_H
+ * No offset needed because sent frame covers the full screen (no letterbox).
+ */
 function drawBBoxes(faces) {
   const canvas = canvasEl.value
   const video  = videoEl.value
   if (!canvas || !video) return
-  canvas.width  = video.clientWidth
-  canvas.height = video.clientHeight
-  const scaleX = canvas.width  / (video.videoWidth  || canvas.width)
-  const scaleY = canvas.height / (video.videoHeight || canvas.height)
-  const ctx = canvas.getContext('2d')
+
+  const displayW = video.clientWidth  || 640
+  const displayH = video.clientHeight || 480
+  if (canvas.width !== displayW)  canvas.width  = displayW
+  if (canvas.height !== displayH) canvas.height = displayH
+
+  const SEND_W = 640
+  const SEND_H = Math.round(SEND_W / (displayW / displayH))
+  const scaleX = displayW / SEND_W
+  const scaleY = displayH / SEND_H
+
+  if (!_bboxCtx || _bboxCtx.canvas !== canvas) _bboxCtx = canvas.getContext('2d')
+  const ctx = _bboxCtx
   ctx.clearRect(0, 0, canvas.width, canvas.height)
+
   for (const face of faces) {
     const { x, y, w, h } = face.bbox
     ctx.strokeStyle = face.status === 'match' ? '#22c55e' : '#ef4444'
@@ -503,8 +716,9 @@ async function startStream() {
 }
 
 function stopStream() {
-  streaming.value = false
-  paused.value    = false
+  streaming.value       = false
+  paused.value          = false
+  switchingCamera.value = false
   _clearOverlay()
   _stopFrameLoop()
   _releaseWakeLock()
@@ -512,9 +726,14 @@ function stopStream() {
   if (ws)           { ws.close(); ws = null }
   if (mediaStream)  { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
   if (videoEl.value) videoEl.value.srcObject = null
+  _offscreenCanvas = null   // release GPU memory on stop
+  _offscreenCtx    = null
+  _bboxCtx         = null
+  _geo             = null
   wsState.value  = 'disconnected'
   localFps.value = 0
   _frameCounter  = 0
+  _unknownFrames = 0
   _audioCooldown.clear()
 }
 </script>
