@@ -219,182 +219,196 @@ async def scan_ws(
                         )]
                     )
 
-                faces: list[FaceResult] = []
-                match_threshold   = await _get_match_threshold()
-                spoof_enabled     = await get_anti_spoof_enabled() and anti_spoof_engine.available
-                spoof_threshold   = await get_anti_spoof_threshold() if spoof_enabled else 0.6
+                match_threshold = await _get_match_threshold()
+                spoof_enabled   = await get_anti_spoof_enabled() and anti_spoof_engine.available
+                spoof_threshold = await get_anti_spoof_threshold() if spoof_enabled else 0.6
 
-                for tracking_id, embedding, bbox in tracked:
-                    # ── Tracker cache hit — same face from recent frame ────────
-                    cached = tracker.get_cached_result(tracking_id)
+                # ── Step 1: split cached vs needs full pipeline ───────────────
+                faces: list[FaceResult] = []
+                to_process: list[tuple[int, np.ndarray, list[int]]] = []
+
+                for tid, emb, bbox in tracked:
+                    cached = tracker.get_cached_result(tid)
                     if cached is not None:
-                        # Refresh bbox (face may have moved slightly) but skip
-                        # Qdrant search, DB lookup, attendance logging, broadcast.
                         faces.append(cached.model_copy(update={
-                            "tracking_id": tracking_id,
+                            "tracking_id": tid,
                             "bbox": BBox(x=bbox[0], y=bbox[1],
                                          w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
-                            "attendance_logged": False,  # already logged on first hit
+                            "attendance_logged": False,
                         }))
-                        continue
-                    # Anti-spoofing gate — reject photo/video replay attacks
+                    else:
+                        to_process.append((tid, emb, bbox))
+
+                if not to_process:
+                    # all faces were cached — skip the rest of the pipeline
+                    pass
+                else:
+                    # ── Step 2: anti-spoof ALL uncached faces in parallel ─────
                     if spoof_enabled:
-                        is_live, spoof_score = await loop.run_in_executor(
-                            _executor,
-                            lambda b=bbox: anti_spoof_engine.check_liveness(frame, b, spoof_threshold),
-                        )
+                        spoof_checks = await asyncio.gather(*[
+                            loop.run_in_executor(
+                                _executor,
+                                lambda b=bbox: anti_spoof_engine.check_liveness(
+                                    frame, b, spoof_threshold),
+                            )
+                            for _, _, bbox in to_process
+                        ])
+                    else:
+                        spoof_checks = [(True, 1.0)] * len(to_process)
+
+                    # ── Step 3: separate live vs spoof ────────────────────────
+                    live: list[tuple[int, np.ndarray, list[int]]] = []
+                    for i, (tid, emb, bbox) in enumerate(to_process):
+                        is_live, score = spoof_checks[i]
                         if not is_live:
-                            spoof_result = FaceResult(
-                                tracking_id=tracking_id,
-                                status="spoof",
-                                confidence=spoof_score,
+                            r = FaceResult(
+                                tracking_id=tid, status="spoof",
+                                confidence=score,
                                 bbox=BBox(x=bbox[0], y=bbox[1],
                                           w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
                                 attendance_logged=False,
                             )
-                            tracker.set_result(tracking_id, spoof_result)
-                            faces.append(spoof_result)
+                            tracker.set_result(tid, r)
+                            faces.append(r)
                             await _redis.publish("omnisight:events", json.dumps({
                                 "event": "spoof_detected",
-                                "station_id": station_id,
-                                "camera_id": camera_id,
+                                "station_id": station_id, "camera_id": camera_id,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             }))
-                            continue
-                    # Qdrant search — synchronous client → thread pool
-                    results = await loop.run_in_executor(
-                        _executor,
-                        partial(
-                            qdrant.search,
-                            collection_name=settings.qdrant_collection,
-                            query_vector=embedding.tolist(),
-                            query_filter=qdrant_filter,
-                            limit=1,
-                            score_threshold=match_threshold,
-                        )
-                    )
+                        else:
+                            live.append((tid, emb, bbox))
 
-                    if results:
-                        hit         = results[0]
-                        employee_id = hit.payload.get("employee_id")
-                        confidence  = hit.score
-
-                        # Fetch employee details from DB (full_name, emp_code, dept_name)
-                        # These are NOT stored in Qdrant payload — only employee_id & dept_id are.
-                        full_name = ""
-                        emp_code  = None
-                        dept_name = None
-                        try:
-                            emp_row = await db.execute(
-                                select(Employee, Department.name.label("dept_name"))
-                                .join(Department, Department.id == Employee.dept_id, isouter=True)
-                                .where(Employee.id == employee_id)
+                    # ── Step 4: Qdrant search ALL live faces in parallel ───────
+                    if live:
+                        qdrant_results = await asyncio.gather(*[
+                            loop.run_in_executor(
+                                _executor,
+                                partial(
+                                    qdrant.search,
+                                    collection_name=settings.qdrant_collection,
+                                    query_vector=emb.tolist(),
+                                    query_filter=qdrant_filter,
+                                    limit=1,
+                                    score_threshold=match_threshold,
+                                ),
                             )
-                            emp_row = emp_row.first()
-                            if emp_row:
-                                emp_obj   = emp_row[0]
-                                full_name = emp_obj.full_name or ""
-                                emp_code  = emp_obj.emp_code
-                                dept_name = emp_row[1]  # dept_name label
-                        except Exception as e:
-                            logger.warning(f"Employee lookup failed: {e}")
+                            for _, emb, _ in live
+                        ])
+                    else:
+                        qdrant_results = []
 
-                        # Crop face for snapshot evidence (with 25% padding)
-                        face_crop_jpg: Optional[bytes] = None
+                    # ── Step 5: split matches vs unknowns ─────────────────────
+                    matches:  list[tuple[int, list[int], int, float]] = []
+                    unknowns: list[tuple[int, list[int]]]             = []
+                    for i, (tid, _, bbox) in enumerate(live):
+                        hits = qdrant_results[i]
+                        if hits:
+                            matches.append((tid, bbox, hits[0].payload["employee_id"], hits[0].score))
+                        else:
+                            unknowns.append((tid, bbox))
+
+                    # ── Step 6: DB lookup + face crop for ALL matches in parallel
+                    def _crop_sync(bbox: list[int]) -> Optional[bytes]:
                         try:
                             x1, y1, x2, y2 = bbox
                             ih, iw = frame.shape[:2]
-                            pad_x = int((x2 - x1) * 0.25)
-                            pad_y = int((y2 - y1) * 0.25)
-                            cx1 = max(0, x1 - pad_x)
-                            cy1 = max(0, y1 - pad_y)
-                            cx2 = min(iw, x2 + pad_x)
-                            cy2 = min(ih, y2 + pad_y)
-                            crop = frame[cy1:cy2, cx1:cx2]
+                            px = int((x2 - x1) * 0.25)
+                            py = int((y2 - y1) * 0.25)
+                            crop = frame[max(0,y1-py):min(ih,y2+py),
+                                         max(0,x1-px):min(iw,x2+px)]
                             if crop.size > 0:
                                 ok, buf = cv2.imencode(
-                                    '.jpg', crop,
-                                    [cv2.IMWRITE_JPEG_QUALITY, 85]
+                                    '.jpg', crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                                return buf.tobytes() if ok else None
+                        except Exception:
+                            return None
+
+                    if matches:
+                        emp_rows, crops = await asyncio.gather(
+                            asyncio.gather(*[
+                                db.execute(
+                                    select(Employee, Department.name.label("dept_name"))
+                                    .join(Department, Department.id == Employee.dept_id,
+                                          isouter=True)
+                                    .where(Employee.id == emp_id)
                                 )
-                                if ok:
-                                    face_crop_jpg = buf.tobytes()
-                        except Exception as _crop_err:
-                            logger.warning(f"Face crop failed: {_crop_err}")
+                                for _, _, emp_id, _ in matches
+                            ]),
+                            asyncio.gather(*[
+                                loop.run_in_executor(_executor, _crop_sync, bbox)
+                                for _, bbox, _, _ in matches
+                            ]),
+                        )
+                    else:
+                        emp_rows, crops = [], []
+
+                    # ── Step 7: log_attendance + broadcast for each match ──────
+                    # Sequential: DB writes share a session — safer than concurrent
+                    for i, (tid, bbox, emp_id, confidence) in enumerate(matches):
+                        row = emp_rows[i].first() if emp_rows else None
+                        full_name = row[0].full_name or "" if row else ""
+                        emp_code  = row[0].emp_code        if row else None
+                        dept_name = row[1]                 if row else None
 
                         log_id = await log_attendance(
-                            db=db,
-                            employee_id=employee_id,
-                            station_id=station_id,
+                            db=db, employee_id=emp_id, station_id=station_id,
                             confidence_score=confidence,
-                            face_crop_jpg=face_crop_jpg,
+                            face_crop_jpg=crops[i] if crops else None,
                         )
                         logged = log_id is not None
 
                         await camera_manager.broadcast_attendance(
-                            camera_id=camera_id,
-                            station_id=station_id,
-                            employee_id=employee_id,
-                            full_name=full_name,
-                            confidence=confidence,
-                            logged=logged,
+                            camera_id=camera_id, station_id=station_id,
+                            employee_id=emp_id, full_name=full_name,
+                            confidence=confidence, logged=logged,
                         )
 
-                        match_result = FaceResult(
-                            tracking_id=tracking_id,
-                            status="match",
-                            employee_id=employee_id,
-                            full_name=full_name,
-                            emp_code=emp_code,
-                            dept_name=dept_name,
+                        r = FaceResult(
+                            tracking_id=tid, status="match",
+                            employee_id=emp_id, full_name=full_name,
+                            emp_code=emp_code, dept_name=dept_name,
                             confidence=confidence,
                             bbox=BBox(x=bbox[0], y=bbox[1],
                                       w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
                             attendance_logged=logged,
                         )
-                        tracker.set_result(tracking_id, match_result)
-                        faces.append(match_result)
+                        tracker.set_result(tid, r)
+                        faces.append(r)
 
                         if logged:
                             await _redis.publish("omnisight:events", json.dumps({
                                 "event": "attendance_match",
-                                "station_id": station_id,
-                                "camera_id": camera_id,
-                                "employee_id": employee_id,
-                                "full_name": full_name,
-                                "emp_code": emp_code,
-                                "dept_name": dept_name,
+                                "station_id": station_id, "camera_id": camera_id,
+                                "employee_id": emp_id, "full_name": full_name,
+                                "emp_code": emp_code, "dept_name": dept_name,
                                 "confidence": round(confidence, 4),
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             }))
-                    else:
+
+                    # ── Step 8: unknowns ──────────────────────────────────────
+                    for tid, bbox in unknowns:
                         await camera_manager.broadcast_unknown(
-                            camera_id=camera_id,
-                            station_id=station_id,
+                            camera_id=camera_id, station_id=station_id,
                             bbox={"x": bbox[0], "y": bbox[1],
                                   "w": bbox[2]-bbox[0], "h": bbox[3]-bbox[1]},
                         )
-                        # Unknown face alert — increment 5-min counter, trigger if threshold reached
                         unknown_count = await increment_unknown_count(station_id)
-                        threshold = await get_unknown_alert_threshold()
+                        threshold     = await get_unknown_alert_threshold()
                         if unknown_count >= threshold:
                             await _redis.publish("omnisight:events", json.dumps({
                                 "event": "unknown_face_alert",
-                                "station_id": station_id,
-                                "camera_id": camera_id,
-                                "count": unknown_count,
-                                "threshold": threshold,
+                                "station_id": station_id, "camera_id": camera_id,
+                                "count": unknown_count, "threshold": threshold,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             }))
-                        unknown_result = FaceResult(
-                            tracking_id=tracking_id,
-                            status="unknown",
-                            confidence=0.0,
+                        r = FaceResult(
+                            tracking_id=tid, status="unknown", confidence=0.0,
                             bbox=BBox(x=bbox[0], y=bbox[1],
                                       w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
                             attendance_logged=False,
                         )
-                        tracker.set_result(tracking_id, unknown_result)
-                        faces.append(unknown_result)
+                        tracker.set_result(tid, r)
+                        faces.append(r)
 
                 scan = ScanResult(
                     timestamp=datetime.now(timezone.utc),

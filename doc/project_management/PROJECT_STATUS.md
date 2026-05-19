@@ -11,10 +11,10 @@
 
 ```
 Phase 1 — Foundation     ████████████████████ 100%  ✅ DONE
-Phase 2 — AI Core        ███████████████░░░░░  75%  🔄 IN PROGRESS
-Phase 3 — HR Features    ████████████░░░░░░░░  60%  🔄 IN PROGRESS
-Phase 4 — Multi-Camera   █████████████████░░░  90%  🔄 IN PROGRESS
-Phase 5 — Production     ████████░░░░░░░░░░░░  40%  🔄 IN PROGRESS
+Phase 2 — AI Core        █████████████████░░░  85%  🔄 IN PROGRESS  (2.6, 2.7 LOW remaining)
+Phase 3 — HR Features    ████████████████░░░░  80%  🔄 IN PROGRESS  (3.5, 3.6 LOW remaining)
+Phase 4 — Multi-Camera   ████████████████████ 100%  ✅ DONE
+Phase 5 — Production     ████████████░░░░░░░░  60%  🔄 IN PROGRESS  (logging, perf test, cron, rtsp-agent)
 ```
 
 ---
@@ -51,7 +51,7 @@ Phase 5 — Production     ████████░░░░░░░░░�
 
 ---
 
-## Phase 2 — AI Core 🔄 IN PROGRESS (20%)
+## Phase 2 — AI Core 🔄 IN PROGRESS (85%)
 
 **เป้าหมาย:** ระบบ recognition เต็มรูปแบบ + attendance logging อัตโนมัติ
 
@@ -136,7 +136,7 @@ Phase 5 — Production     ████████░░░░░░░░░�
 
 ---
 
-## Phase 3 — HR Features ⏳ PENDING
+## Phase 3 — HR Features 🔄 IN PROGRESS (80%)
 
 **เป้าหมาย:** รายงาน HR, export, user management
 
@@ -151,7 +151,7 @@ Phase 5 — Production     ████████░░░░░░░░░�
 
 ---
 
-## Phase 4 — Multi-Camera & Pilot Console 📐 DESIGNED
+## Phase 4 — Multi-Camera & Pilot Console ✅ DONE (100%)
 
 **เป้าหมาย:** รองรับกล้องทุกประเภท + ศูนย์ควบคุม Pilot Console
 
