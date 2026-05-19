@@ -53,6 +53,8 @@ pillow==10.4.0
 portalocker==2.10.1
 prettytable==3.17.0
 protobuf==6.33.6
+prometheus-client==0.21.1
+psutil==6.1.0
 psycopg2-binary==2.9.9
 pyasn1==0.6.3
 pycparser==3.0

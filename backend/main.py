@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from app.core.config import get_settings
 from app.db.postgres import async_session_factory
@@ -11,10 +13,9 @@ from app.db.qdrant import init_collection
 from app.services.camera_manager import camera_manager
 
 settings = get_settings()
+from app.core.logging_config import setup_logging
+setup_logging(settings.log_dir)
 logger = logging.getLogger(__name__)
-
-# Set app loggers to INFO so application logs appear alongside uvicorn logs
-logging.getLogger("app").setLevel(logging.INFO)
 
 
 async def _seed_admin():
@@ -87,7 +88,8 @@ async def lifespan(app: FastAPI):
     await _seed_admin()
 
     # Init anti-spoof engine (lazy — won't load model until first use)
-    from app.core.face_engine import anti_spoof_engine
+    from app.core.face_engine import anti_spoof_engine, face_engine
+    from app.api.websocket import _executor
     anti_spoof_engine.init(settings.anti_spoof_model_dir)
     if anti_spoof_engine.available:
         logger.info("AntiSpoofEngine: MiniFASNet model found — anti-spoofing ready")
@@ -96,6 +98,13 @@ async def lifespan(app: FastAPI):
             "AntiSpoofEngine: model not found — anti-spoofing disabled. "
             "Run: python backend/scripts/download_anti_spoof_model.py"
         )
+
+    # Warm up FaceEngine — load buffalo_l + JIT-compile ONNX kernels now,
+    # so the first camera connection is not stalled by 5-10 s model init.
+    logger.info("Warming up FaceEngine (buffalo_l)…")
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(_executor, face_engine.warmup)
+    logger.info("FaceEngine warm-up done")
 
     # Start heartbeat monitor (background task)
     heartbeat_task = asyncio.create_task(camera_manager.heartbeat_monitor())
@@ -135,6 +144,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health")

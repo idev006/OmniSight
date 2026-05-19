@@ -1,0 +1,55 @@
+# RTSP Camera Bridge — overlay compose file
+#
+# Usage (add one rtsp_camN block per camera):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.rtsp.yml \
+#     --env-file .env.prod up -d
+#
+# Required env vars (set in .env.prod or shell):
+#   STATION_ID       — UUID of the OmniSight station this camera belongs to
+#   RTSP_TOKEN       — OPERATOR JWT (obtain via POST /api/v1/auth/login)
+#   RTSP_URL_CAM1    — rtsp://user:pass@ip:554/stream1
+
+services:
+
+  rtsp_cam1:
+    build:
+      context: ./backend/agents
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      OMNISIGHT_WS: "ws://backend:8000/api/v1/ws/scan/${STATION_ID}"
+      STATION_ID:   "${STATION_ID}"
+      CAMERA_ID:    "rtsp-cam1"
+      TOKEN:        "${RTSP_TOKEN}"
+      RTSP_URL:     "${RTSP_URL_CAM1}"
+      TARGET_FPS:   "2"
+      JPEG_QUALITY: "70"
+      RESIZE_WIDTH: "960"
+    depends_on:
+      - backend
+    networks:
+      - omnisight_net
+
+  # Duplicate this block for additional cameras:
+  # rtsp_cam2:
+  #   build:
+  #     context: ./backend/agents
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   environment:
+  #     OMNISIGHT_WS: "ws://backend:8000/api/v1/ws/scan/${STATION_ID}"
+  #     STATION_ID:   "${STATION_ID}"
+  #     CAMERA_ID:    "rtsp-cam2"
+  #     TOKEN:        "${RTSP_TOKEN}"
+  #     RTSP_URL:     "${RTSP_URL_CAM2}"
+  #     TARGET_FPS:   "2"
+  #     JPEG_QUALITY: "70"
+  #     RESIZE_WIDTH: "960"
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - omnisight_net
+
+networks:
+  omnisight_net:
+    external: true

@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create storage directories
-RUN mkdir -p /app/storage/faces /app/storage/snapshots
+# Create storage and log directories
+RUN mkdir -p /app/storage/faces /app/storage/snapshots /app/logs
 
 # Pre-download InsightFace buffalo_l model (so container start is fast)
 # This runs at build time; if network unavailable, remove this line and

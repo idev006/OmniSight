@@ -81,17 +81,18 @@ Phase 1 — Foundation     █████████████████�
 Phase 2 — AI Core        █████████████████░░░  85%  🔄 IN PROGRESS
 Phase 3 — HR Features    ████████████████████ 100%  ✅ DONE
 Phase 4 — Multi-Camera   ████████████████████ 100%  ✅ DONE
-Phase 5 — Production     ████████░░░░░░░░░░░░  40%  🔄 IN PROGRESS
+Phase 5 — Production     █████████████████░░░  85%  🔄 IN PROGRESS
 ```
 
-### Data ใน DB (ณ Sprint 13)
+### Data ใน DB (ณ Sprint 15d)
 | รายการ | ค่า |
 |--------|-----|
-| Employee | emp1 (6/6 enrolled ✅), emp2 (0/6) |
+| Employee | emp1 (6/6 enrolled ✅), emp2 (0/6), seed 1,000 (EMP00001–EMP01000) |
 | Station | sta1 (ccd829a0), sta2 (07464848) |
 | Users | admin (ADMIN), hr1 (HR), operator1 (OPERATOR) |
 | Attendance logs | 27+ records, id≥27 มี snapshot_path |
-| Qdrant vectors | 6 (0 orphaned — BUG-002 ✅ fixed) |
+| Qdrant vectors | 6,006 (6 real + 6,000 seed) |
+| inference_workers | 4 (default, เปลี่ยนได้ใน Settings UI — ไม่ต้อง restart) |
 
 ---
 
@@ -120,6 +121,22 @@ Phase 5 — Production     ████████░░░░░░░░░�
 | RTSP Bridge | `backend/agents/rtsp_agent.py` — IP Camera/CCTV → WebSocket |
 | Mobile | `MobileScanView.vue` — fullscreen `/mobile-scan` route (ไม่มี sidebar) |
 | FaceResult | JOIN employees+departments → full_name, emp_code, dept_name ครบ |
+
+---
+
+## Performance Architecture (Sprint 15b–15c — ✅ DONE)
+
+| Component | รายละเอียด |
+|-----------|-----------|
+| AsyncQdrantClient | `search_batch()` — 1 HTTP round-trip สำหรับ N faces ต่อ frame |
+| Anti-spoof batch | `predict_batch()` — N faces → 1 ONNX call |
+| Settings cache | 5s TTL + `asyncio.Lock` (stampede-safe) ใน `_get_frame_settings()` |
+| cv2.imdecode | รันใน executor — unblock event loop |
+| Dynamic workers | Admin เปลี่ยน `inference_workers` ใน Settings UI → ไม่ต้อง restart |
+| Hungarian tracker | `scipy.optimize.linear_sum_assignment` — globally optimal face matching |
+| FaceEngine warmup | `face_engine.warmup()` at startup — ไม่มี first-camera stall |
+| Prometheus metrics | `GET /metrics` — 14 omnisight metrics, Grafana-ready |
+| Load test result | 10 cameras × 2fps: **error=0%**, p95=3.5s (CPU-only, no GPU) |
 
 ---
 
@@ -152,13 +169,12 @@ Phase 5 — Production     ████████░░░░░░░░░�
 
 ---
 
-## งานที่ต้องทำถัดไป (Sprint 14)
+## งานที่ต้องทำถัดไป (Sprint 16)
 
 ### ลำดับความสำคัญ
-1. 🟢 **GitHub push** — Sprint 9–13 (ต้องขออนุญาต user)
-2. 🟡 **Logging & monitoring** — structured JSON logs + file rotation
-3. 🟢 **Performance test** — 1000 employees, 10+ cameras
-4. 🟢 **rtsp_agent Dockerfile** — สำหรับ production CCTV deploy
+1. 🟡 **GitHub push** — Sprint 9–15d (ต้องขออนุญาต user ก่อน)
+2. 🟢 **Grafana dashboard** — visualize Prometheus metrics จาก `GET /metrics`
+3. 🟢 **Cron backup** — automatic daily backup scheduler
 
 ---
 
@@ -175,7 +191,7 @@ Phase 5 — Production     ████████░░░░░░░░░�
 | ไฟล์ | เนื้อหา |
 |------|---------|
 | `doc/project_management/PROJECT_STATUS.md` | Dashboard + phase tracking |
-| `doc/project_management/SPRINT_LOG.md` | Sprint 1–13 history + context |
+| `doc/project_management/SPRINT_LOG.md` | Sprint 1–15d history + context |
 | `doc/project_management/DECISIONS_LOG.md` | ADR-001 ถึง ADR-011 |
 | `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` | Multi-camera & Pilot Console design |
 | `doc/cluade_version/chapter_22_auth_authorization.md` | Auth/Authz — seq diagrams + API matrix |
@@ -187,7 +203,7 @@ Phase 5 — Production     ████████░░░░░░░░░�
 - Repository: https://github.com/idev006/OmniSight
 - Branch: master
 - Latest push: Sprint 8 (`652c445`)
-- Sprint 9–13 changes: **ยังไม่ได้ push** (รอ approval)
+- Sprint 9–15d changes: **ยังไม่ได้ push** (รอ approval)
 - .gitignore excludes: `my_env/`, `.env`, `storage/`, `frontend/node_modules/`, `models/`, `data/`, `backups/`
 
 > **⚠️ ห้าม push GitHub โดยไม่ขออนุญาต user ก่อนทุกครั้ง**
@@ -210,4 +226,4 @@ Phase 5 — Production     ████████░░░░░░░░░�
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-18 (Sprint 13 — Production Docker stack, backup system, anti-spoofing, late/absent detection)*
+*อัพเดทล่าสุด: 2026-05-19 (Sprint 15d — load test 0% error, /metrics endpoint, structured logging, RTSP Docker, Prometheus, Hungarian tracker, dynamic scaling)*

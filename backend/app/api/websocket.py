@@ -2,16 +2,17 @@
 WebSocket Scan Handler — Multi-Camera Edition
 ws/scan/{station_id}?token={jwt}&camera_id={id}
 
-Design for plug-and-play multi-camera:
-  1. FPS gate per camera   — backend-side rate limiter, prevents CPU overload
-                             regardless of how fast the camera sends frames
-  2. Thread pool executor  — face_engine.get_detections() is CPU-bound ONNX;
-                             running it in executor keeps event loop free so
-                             all camera connections receive frames concurrently
-  3. Redis-cached FPS cap  — admin changes max_fps_per_camera in Settings UI,
-                             write-through to Redis, websocket reads it live
-  4. Last-writer-wins      — CameraManager handles duplicate camera_id by
-                             closing the old connection gracefully
+Performance architecture (Sprint 15):
+  1. FPS gate              — drop frames faster than max_fps, no queue buildup
+  2. Thread pool executor  — CPU-bound ONNX off the event loop
+  3. AsyncQdrantClient     — Qdrant search as pure async IO (zero threads)
+  4. search_batch()        — 1 HTTP round-trip for all N faces per frame
+  5. Anti-spoof batch      — 1 ONNX call for all N faces per frame
+  6. Settings cache 5s TTL — asyncio.Lock prevents stampede on cache expiry
+  7. Decode in executor    — cv2.imdecode off event loop
+  8. IoU tracker cache     — skip full pipeline for same face in consecutive frames
+  9. Prometheus metrics    — latency histograms, counters, gauges
+ 10. Dynamic worker scaling — executor resized without restart when setting changes
 """
 import asyncio
 import json
@@ -19,21 +20,26 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from typing import Optional
 
 import cv2
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from qdrant_client.models import Filter, FieldCondition, MatchAny
-
+from qdrant_client.models import Filter, FieldCondition, MatchAny, SearchRequest
 from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.security import get_current_user_ws
-from app.core.face_engine import face_engine, anti_spoof_engine
-from app.core.tracker import SimpleTracker
+from app.core.face_engine import face_engine, anti_spoof_engine, crop_face_jpeg
+from app.core.tracker import FaceTracker
+from app.core.metrics import (
+    INF_DURATION, QDRANT_DURATION, SPOOF_DURATION,
+    FRAMES_RECEIVED, FRAMES_PROCESSED, FRAMES_DROPPED,
+    CACHE_HITS, CACHE_MISSES,
+    FACES_DETECTED, FACES_MATCHED, FACES_UNKNOWN, FACES_SPOOF,
+    ACTIVE_CAMERAS, INFERENCE_WORKERS, INFLIGHT_INFERENCES,
+)
 from app.db.postgres import async_session_factory
-from app.db.qdrant import get_qdrant_sync
+from app.db.qdrant import qdrant as _async_qdrant
 from app.db.redis import (
     get_station_filter, redis as _redis,
     increment_unknown_count, get_unknown_alert_threshold,
@@ -45,38 +51,56 @@ from app.services.attendance_service import log_attendance
 from app.services.camera_manager import camera_manager
 from datetime import datetime, timezone
 
-logger = logging.getLogger(__name__)
-router = APIRouter()
+logger   = logging.getLogger(__name__)
+router   = APIRouter()
 settings = get_settings()
 
-# ── Thread pool for CPU-bound face inference ──────────────────────────────────
-# All cameras share this pool. Workers = inference_workers setting (default 2).
-# With 2 workers: 2 cameras process concurrently, others queue.
-# Prevents: face engine blocking the event loop and starving other cameras.
-_executor = ThreadPoolExecutor(
+# ── Thread pool — CPU-only: detection, anti-spoof, decode, crop ───────────────
+# Dynamic scaling: the pool is swapped atomically when inference_workers changes.
+# asyncio.Lock prevents two coroutines from rebuilding the pool simultaneously.
+_executor:         ThreadPoolExecutor = ThreadPoolExecutor(
     max_workers=settings.inference_workers,
     thread_name_prefix="face-worker",
 )
+_executor_workers: int        = settings.inference_workers
+_executor_lock                = asyncio.Lock()
+INFERENCE_WORKERS.set(settings.inference_workers)
 
-# ── Per-camera FPS tracking (module-level, lives for process lifetime) ─────────
-# _last_processed[camera_id] = monotonic timestamp of last processed frame
-# Frames arriving faster than 1/max_fps are discarded (not queued) to prevent
-# memory buildup when a fast source (e.g. 30 FPS webcam) feeds a slow backend.
-_last_processed: dict[str, float] = {}
 
-# ── Per-camera face trackers ──────────────────────────────────────────────────
-# SimpleTracker assigns persistent track_id across frames via IoU bbox matching.
-# Caches Qdrant search results per track — skips re-search for the same face
-# in consecutive frames, significantly reducing Qdrant + DB load.
-_trackers: dict[str, SimpleTracker] = {}
+async def _resize_executor_if_needed(new_size: int) -> None:
+    """
+    Atomically swap the global ThreadPoolExecutor when inference_workers changes.
+    Old executor is shut down gracefully (running tasks finish; new tasks go to
+    the new pool).  asyncio.Lock ensures only one resize runs at a time.
+    """
+    global _executor, _executor_workers
+    if new_size == _executor_workers:
+        return
+    async with _executor_lock:
+        if new_size == _executor_workers:   # someone else already resized
+            return
+        old = _executor
+        _executor = ThreadPoolExecutor(
+            max_workers=new_size, thread_name_prefix="face-worker"
+        )
+        _executor_workers = new_size
+        INFERENCE_WORKERS.set(new_size)
+        old.shutdown(wait=False)            # existing tasks finish; no new ones
+        logger.info(f"Executor resized → {new_size} workers")
+
+
+# ── Per-camera state (process lifetime) ──────────────────────────────────────
+_last_processed: dict[str, float]    = {}
+_trackers:       dict[str, FaceTracker] = {}
+
+# ── Global settings cache (5-second TTL, stampede-safe) ──────────────────────
+_cached_settings:    dict  = {}
+_cached_settings_ts: float = 0.0
+_SETTINGS_TTL:       float = 5.0
+_settings_lock               = asyncio.Lock()
 
 
 async def _get_max_fps() -> float:
-    """
-    Read max_fps_per_camera from Redis (write-through cache from settings.py).
-    Falls back to config default if Redis unavailable.
-    This allows admin to change FPS cap without restarting the backend.
-    """
     try:
         val = await _redis.get("setting:max_fps_per_camera")
         if val:
@@ -96,326 +120,329 @@ async def _get_match_threshold() -> float:
     return float(settings.match_threshold)
 
 
+async def _get_frame_settings() -> dict:
+    """
+    Cached settings dict, refreshed from Redis at most once per TTL.
+    Double-checked asyncio.Lock: only one coroutine fires the Redis gather
+    even when all N camera handlers hit an expired cache simultaneously.
+    Also triggers dynamic executor resize if inference_workers changed.
+    """
+    global _cached_settings, _cached_settings_ts
+    now = time.monotonic()
+    if now - _cached_settings_ts <= _SETTINGS_TTL:
+        return _cached_settings
+
+    async with _settings_lock:
+        if now - _cached_settings_ts <= _SETTINGS_TTL:
+            return _cached_settings
+        vals = await asyncio.gather(
+            _get_max_fps(),
+            _get_match_threshold(),
+            get_anti_spoof_enabled(),
+            get_anti_spoof_threshold(),
+            get_unknown_alert_threshold(),
+            _redis.get("setting:inference_workers"),
+        )
+        _cached_settings = {
+            "max_fps":           vals[0],
+            "match_threshold":   vals[1],
+            "spoof_enabled":     vals[2] and anti_spoof_engine.available,
+            "spoof_threshold":   vals[3],
+            "unknown_threshold": vals[4],
+        }
+        # Dynamic worker scaling — resize executor if admin changed the setting
+        raw_workers = vals[5]
+        if raw_workers:
+            await _resize_executor_if_needed(max(1, int(raw_workers)))
+
+        _cached_settings_ts = time.monotonic()
+    return _cached_settings
+
+
 @router.websocket("/scan/{station_id}")
 async def scan_ws(
     websocket: WebSocket,
     station_id: str,
-    token: str = Query(default=""),
+    token:     str = Query(default=""),
     camera_id: str = Query(default=""),
 ):
-    # ── Auth ────────────────────────────────────────────────────────────────
+    # ── Auth ─────────────────────────────────────────────────────────────────
     try:
         user = get_current_user_ws(token)
     except Exception:
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
-    # ── Station authorization ────────────────────────────────────────────────
     if not user.can_access_station(station_id):
         await websocket.close(code=4003, reason="No access to this station")
         return
 
-    # ── camera_id assignment ─────────────────────────────────────────────────
-    # If client doesn't provide camera_id, auto-generate one.
-    # Convention: {type_prefix}-{user_id[:6]}-{station_id[:6]}
-    # This gives a unique-enough ID for the session and makes logs readable.
     if not camera_id:
-        type_prefix = "sm" if user.role == "OPERATOR" else "wc"
-        camera_id = f"{type_prefix}-{user.user_id[:6]}-{station_id[:6]}"
+        prefix    = "sm" if user.role == "OPERATOR" else "wc"
+        camera_id = f"{prefix}-{user.user_id[:6]}-{station_id[:6]}"
 
     camera_type = "SMARTPHONE" if user.role == "OPERATOR" else "WEBCAM"
 
     await websocket.accept()
     logger.info(f"WS connected: camera={camera_id} station={station_id} user={user.username}")
 
-    # ── Register camera (hot plug — displaces any existing same camera_id) ──
     await camera_manager.register(
-        camera_id=camera_id,
-        station_id=station_id,
-        camera_type=camera_type,
-        websocket=websocket,
+        camera_id=camera_id, station_id=station_id,
+        camera_type=camera_type, websocket=websocket,
     )
+    ACTIVE_CAMERAS.inc()
 
-    # ── Read live FPS cap from Redis ──────────────────────────────────────────
-    max_fps = await _get_max_fps()
-    min_interval = 1.0 / max_fps   # minimum seconds between processed frames
-    logger.info(f"Camera {camera_id}: max_fps={max_fps:.1f} min_interval={min_interval:.3f}s")
-
-    qdrant = get_qdrant_sync()
-    paused = False
-    loop   = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
     try:
         async with async_session_factory() as db:
             while True:
-                # ── Receive frame ─────────────────────────────────────────
                 raw = await websocket.receive_bytes()
-
-                # FPS tracker (counts every received frame, not just processed)
+                FRAMES_RECEIVED.inc()
                 camera_manager.record_frame(camera_id)
 
-                # ── Handle control messages from server (pause/resume/set_fps) ─
-                # (sent as JSON text, but receive_bytes is used for frames;
-                #  control messages arrive via the Pilot Console → camera_manager
-                #  → websocket.send_text(), not as incoming bytes here.
-                #  Pause state is toggled by CameraManager.)
                 conn = camera_manager._connections.get(camera_id)
                 if conn and conn.status == "paused":
-                    paused = True
-                elif conn and conn.status == "active":
-                    paused = False
-
-                if paused:
-                    # Still receive frames (keep connection alive) but don't process
                     continue
 
-                # ── FPS gate ─────────────────────────────────────────────────
-                # Drop frames that arrive faster than max_fps.
-                # This is critical: a 30 FPS webcam would otherwise saturate the
-                # face engine. We drop silently — no error, no queue buildup.
-                now = time.monotonic()
-                elapsed = now - _last_processed.get(camera_id, 0.0)
-                if elapsed < min_interval:
-                    continue  # skip — too soon since last processed frame
-                _last_processed[camera_id] = now
+                cfg          = await _get_frame_settings()
+                min_interval = 1.0 / cfg["max_fps"]
 
-                # ── Decode JPEG → numpy ───────────────────────────────────────
-                arr = np.frombuffer(raw, np.uint8)
-                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                now = time.monotonic()
+                if now - _last_processed.get(camera_id, 0.0) < min_interval:
+                    FRAMES_DROPPED.inc()
+                    continue
+                _last_processed[camera_id] = now
+                FRAMES_PROCESSED.inc()
+
+                # Decode JPEG in executor
+                arr   = np.frombuffer(raw, np.uint8)
+                frame = await loop.run_in_executor(
+                    _executor, cv2.imdecode, arr, cv2.IMREAD_COLOR
+                )
                 if frame is None:
                     continue
 
-                # ── Face detection (CPU-bound → thread pool) ──────────────────
-                # run_in_executor keeps the event loop free so OTHER camera
-                # connections can receive their frames while this one is detecting.
-                detections = await loop.run_in_executor(
-                    _executor, face_engine.get_detections, frame
-                )
+                # Face detection — timed for Prometheus histogram
+                INFLIGHT_INFERENCES.inc()
+                t0 = time.perf_counter()
+                try:
+                    detections = await loop.run_in_executor(
+                        _executor, face_engine.get_detections, frame
+                    )
+                finally:
+                    INF_DURATION.observe(time.perf_counter() - t0)
+                    INFLIGHT_INFERENCES.dec()
+
+                FACES_DETECTED.inc(len(detections))
 
                 if not detections:
                     await websocket.send_text(
-                        ScanResult(
-                            timestamp=datetime.now(timezone.utc),
-                            camera_id=camera_id,
-                            faces=[],
-                        ).model_dump_json()
+                        ScanResult(timestamp=datetime.now(timezone.utc),
+                                   camera_id=camera_id, faces=[]).model_dump_json()
                     )
                     continue
 
-                # ── Tracker update — assign persistent track_ids via IoU ───────
-                tracker = _trackers.setdefault(camera_id, SimpleTracker())
-                tracked = tracker.update(
-                    [(emb, bbox) for _, emb, bbox in detections]
+                # Hungarian tracker — globally optimal assignment
+                tracker = _trackers.setdefault(camera_id, FaceTracker())
+                tracked = tracker.update([(emb, bbox) for _, emb, bbox in detections])
+
+                dept_ids      = await get_station_filter(station_id)
+                qdrant_filter = (
+                    Filter(must=[FieldCondition(key="dept_id",
+                                               match=MatchAny(any=dept_ids))])
+                    if dept_ids else None
                 )
 
-                # ── Station dept filter (Redis < 1ms) ─────────────────────────
-                dept_ids = await get_station_filter(station_id)
-                qdrant_filter = None
-                if dept_ids:
-                    qdrant_filter = Filter(
-                        must=[FieldCondition(
-                            key="dept_id",
-                            match=MatchAny(any=dept_ids),
-                        )]
-                    )
+                match_threshold = cfg["match_threshold"]
+                spoof_enabled   = cfg["spoof_enabled"]
+                spoof_threshold = cfg["spoof_threshold"]
 
-                match_threshold = await _get_match_threshold()
-                spoof_enabled   = await get_anti_spoof_enabled() and anti_spoof_engine.available
-                spoof_threshold = await get_anti_spoof_threshold() if spoof_enabled else 0.6
-
-                # ── Step 1: split cached vs needs full pipeline ───────────────
-                faces: list[FaceResult] = []
+                # ── Step 1: cached vs needs full pipeline ─────────────────────
+                faces:      list[FaceResult] = []
                 to_process: list[tuple[int, np.ndarray, list[int]]] = []
 
                 for tid, emb, bbox in tracked:
                     cached = tracker.get_cached_result(tid)
                     if cached is not None:
+                        CACHE_HITS.inc()
                         faces.append(cached.model_copy(update={
-                            "tracking_id": tid,
-                            "bbox": BBox(x=bbox[0], y=bbox[1],
-                                         w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
+                            "tracking_id":       tid,
+                            "bbox":              BBox(x=bbox[0], y=bbox[1],
+                                                      w=bbox[2]-bbox[0],
+                                                      h=bbox[3]-bbox[1]),
                             "attendance_logged": False,
                         }))
                     else:
+                        CACHE_MISSES.inc()
                         to_process.append((tid, emb, bbox))
 
                 if not to_process:
-                    # all faces were cached — skip the rest of the pipeline
-                    pass
+                    await websocket.send_text(
+                        ScanResult(timestamp=datetime.now(timezone.utc),
+                                   camera_id=camera_id, faces=faces).model_dump_json()
+                    )
+                    continue
+
+                # ── Step 2: batch anti-spoof (1 ONNX call for all N faces) ───
+                if spoof_enabled:
+                    t0 = time.perf_counter()
+                    bboxes = [b for _, _, b in to_process]
+                    scores = await loop.run_in_executor(
+                        _executor, anti_spoof_engine.predict_batch, frame, bboxes
+                    )
+                    SPOOF_DURATION.observe(time.perf_counter() - t0)
+                    spoof_checks = [(s >= spoof_threshold, s) for s in scores]
                 else:
-                    # ── Step 2: anti-spoof ALL uncached faces in parallel ─────
-                    if spoof_enabled:
-                        spoof_checks = await asyncio.gather(*[
-                            loop.run_in_executor(
-                                _executor,
-                                lambda b=bbox: anti_spoof_engine.check_liveness(
-                                    frame, b, spoof_threshold),
-                            )
-                            for _, _, bbox in to_process
-                        ])
-                    else:
-                        spoof_checks = [(True, 1.0)] * len(to_process)
+                    spoof_checks = [(True, 1.0)] * len(to_process)
 
-                    # ── Step 3: separate live vs spoof ────────────────────────
-                    live: list[tuple[int, np.ndarray, list[int]]] = []
-                    for i, (tid, emb, bbox) in enumerate(to_process):
-                        is_live, score = spoof_checks[i]
-                        if not is_live:
-                            r = FaceResult(
-                                tracking_id=tid, status="spoof",
-                                confidence=score,
-                                bbox=BBox(x=bbox[0], y=bbox[1],
-                                          w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
-                                attendance_logged=False,
-                            )
-                            tracker.set_result(tid, r)
-                            faces.append(r)
-                            await _redis.publish("omnisight:events", json.dumps({
-                                "event": "spoof_detected",
-                                "station_id": station_id, "camera_id": camera_id,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            }))
-                        else:
-                            live.append((tid, emb, bbox))
-
-                    # ── Step 4: Qdrant search ALL live faces in parallel ───────
-                    if live:
-                        qdrant_results = await asyncio.gather(*[
-                            loop.run_in_executor(
-                                _executor,
-                                partial(
-                                    qdrant.search,
-                                    collection_name=settings.qdrant_collection,
-                                    query_vector=emb.tolist(),
-                                    query_filter=qdrant_filter,
-                                    limit=1,
-                                    score_threshold=match_threshold,
-                                ),
-                            )
-                            for _, emb, _ in live
-                        ])
-                    else:
-                        qdrant_results = []
-
-                    # ── Step 5: split matches vs unknowns ─────────────────────
-                    matches:  list[tuple[int, list[int], int, float]] = []
-                    unknowns: list[tuple[int, list[int]]]             = []
-                    for i, (tid, _, bbox) in enumerate(live):
-                        hits = qdrant_results[i]
-                        if hits:
-                            matches.append((tid, bbox, hits[0].payload["employee_id"], hits[0].score))
-                        else:
-                            unknowns.append((tid, bbox))
-
-                    # ── Step 6: DB lookup + face crop for ALL matches in parallel
-                    def _crop_sync(bbox: list[int]) -> Optional[bytes]:
-                        try:
-                            x1, y1, x2, y2 = bbox
-                            ih, iw = frame.shape[:2]
-                            px = int((x2 - x1) * 0.25)
-                            py = int((y2 - y1) * 0.25)
-                            crop = frame[max(0,y1-py):min(ih,y2+py),
-                                         max(0,x1-px):min(iw,x2+px)]
-                            if crop.size > 0:
-                                ok, buf = cv2.imencode(
-                                    '.jpg', crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                                return buf.tobytes() if ok else None
-                        except Exception:
-                            return None
-
-                    if matches:
-                        emp_rows, crops = await asyncio.gather(
-                            asyncio.gather(*[
-                                db.execute(
-                                    select(Employee, Department.name.label("dept_name"))
-                                    .join(Department, Department.id == Employee.dept_id,
-                                          isouter=True)
-                                    .where(Employee.id == emp_id)
-                                )
-                                for _, _, emp_id, _ in matches
-                            ]),
-                            asyncio.gather(*[
-                                loop.run_in_executor(_executor, _crop_sync, bbox)
-                                for _, bbox, _, _ in matches
-                            ]),
-                        )
-                    else:
-                        emp_rows, crops = [], []
-
-                    # ── Step 7: log_attendance + broadcast for each match ──────
-                    # Sequential: DB writes share a session — safer than concurrent
-                    for i, (tid, bbox, emp_id, confidence) in enumerate(matches):
-                        row = emp_rows[i].first() if emp_rows else None
-                        full_name = row[0].full_name or "" if row else ""
-                        emp_code  = row[0].emp_code        if row else None
-                        dept_name = row[1]                 if row else None
-
-                        log_id = await log_attendance(
-                            db=db, employee_id=emp_id, station_id=station_id,
-                            confidence_score=confidence,
-                            face_crop_jpg=crops[i] if crops else None,
-                        )
-                        logged = log_id is not None
-
-                        await camera_manager.broadcast_attendance(
-                            camera_id=camera_id, station_id=station_id,
-                            employee_id=emp_id, full_name=full_name,
-                            confidence=confidence, logged=logged,
-                        )
-
+                # ── Step 3: live vs spoof ─────────────────────────────────────
+                live: list[tuple[int, np.ndarray, list[int]]] = []
+                for i, (tid, emb, bbox) in enumerate(to_process):
+                    is_live, score = spoof_checks[i]
+                    if not is_live:
+                        FACES_SPOOF.inc()
                         r = FaceResult(
-                            tracking_id=tid, status="match",
-                            employee_id=emp_id, full_name=full_name,
-                            emp_code=emp_code, dept_name=dept_name,
-                            confidence=confidence,
-                            bbox=BBox(x=bbox[0], y=bbox[1],
-                                      w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
-                            attendance_logged=logged,
-                        )
-                        tracker.set_result(tid, r)
-                        faces.append(r)
-
-                        if logged:
-                            await _redis.publish("omnisight:events", json.dumps({
-                                "event": "attendance_match",
-                                "station_id": station_id, "camera_id": camera_id,
-                                "employee_id": emp_id, "full_name": full_name,
-                                "emp_code": emp_code, "dept_name": dept_name,
-                                "confidence": round(confidence, 4),
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            }))
-
-                    # ── Step 8: unknowns ──────────────────────────────────────
-                    for tid, bbox in unknowns:
-                        await camera_manager.broadcast_unknown(
-                            camera_id=camera_id, station_id=station_id,
-                            bbox={"x": bbox[0], "y": bbox[1],
-                                  "w": bbox[2]-bbox[0], "h": bbox[3]-bbox[1]},
-                        )
-                        unknown_count = await increment_unknown_count(station_id)
-                        threshold     = await get_unknown_alert_threshold()
-                        if unknown_count >= threshold:
-                            await _redis.publish("omnisight:events", json.dumps({
-                                "event": "unknown_face_alert",
-                                "station_id": station_id, "camera_id": camera_id,
-                                "count": unknown_count, "threshold": threshold,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            }))
-                        r = FaceResult(
-                            tracking_id=tid, status="unknown", confidence=0.0,
+                            tracking_id=tid, status="spoof", confidence=score,
                             bbox=BBox(x=bbox[0], y=bbox[1],
                                       w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
                             attendance_logged=False,
                         )
                         tracker.set_result(tid, r)
                         faces.append(r)
+                        await _redis.publish("omnisight:events", json.dumps({
+                            "event": "spoof_detected", "station_id": station_id,
+                            "camera_id": camera_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }))
+                    else:
+                        live.append((tid, emb, bbox))
 
-                scan = ScanResult(
-                    timestamp=datetime.now(timezone.utc),
-                    camera_id=camera_id,
-                    faces=faces,
+                # ── Step 4: Qdrant batch search (1 HTTP request for all N faces)
+                if live:
+                    t0 = time.perf_counter()
+                    batch_results = await _async_qdrant.search_batch(
+                        collection_name=settings.qdrant_collection,
+                        requests=[
+                            SearchRequest(
+                                vector=emb.tolist(),
+                                filter=qdrant_filter,
+                                limit=1,
+                                score_threshold=match_threshold,
+                                with_payload=True,
+                            )
+                            for _, emb, _ in live
+                        ],
+                    )
+                    QDRANT_DURATION.observe(time.perf_counter() - t0)
+                else:
+                    batch_results = []
+
+                # ── Step 5: matches vs unknowns ───────────────────────────────
+                matches:  list[tuple[int, list[int], str, float]] = []
+                unknowns: list[tuple[int, list[int]]]             = []
+                for i, (tid, _, bbox) in enumerate(live):
+                    hits = batch_results[i] if i < len(batch_results) else []
+                    if hits:
+                        matches.append((tid, bbox, hits[0].payload["employee_id"], hits[0].score))
+                    else:
+                        unknowns.append((tid, bbox))
+
+                # ── Step 6: DB lookup + crops in parallel ─────────────────────
+                if matches:
+                    emp_rows, crops = await asyncio.gather(
+                        asyncio.gather(*[
+                            db.execute(
+                                select(Employee, Department.name.label("dept_name"))
+                                .join(Department, Department.id == Employee.dept_id,
+                                      isouter=True)
+                                .where(Employee.id == emp_id)
+                            )
+                            for _, _, emp_id, _ in matches
+                        ]),
+                        asyncio.gather(*[
+                            loop.run_in_executor(
+                                _executor, partial(crop_face_jpeg, frame, bbox)
+                            )
+                            for _, bbox, _, _ in matches
+                        ]),
+                    )
+                else:
+                    emp_rows, crops = [], []
+
+                # ── Step 7: attendance log + broadcast ────────────────────────
+                for i, (tid, bbox, emp_id, confidence) in enumerate(matches):
+                    row       = emp_rows[i].first() if emp_rows else None
+                    full_name = row[0].full_name or "" if row else ""
+                    emp_code  = row[0].emp_code        if row else None
+                    dept_name = row[1]                 if row else None
+
+                    log_id = await log_attendance(
+                        db=db, employee_id=emp_id, station_id=station_id,
+                        confidence_score=confidence,
+                        face_crop_jpg=crops[i] if crops else None,
+                    )
+                    logged = log_id is not None
+                    FACES_MATCHED.inc()
+
+                    await camera_manager.broadcast_attendance(
+                        camera_id=camera_id, station_id=station_id,
+                        employee_id=emp_id, full_name=full_name,
+                        confidence=confidence, logged=logged,
+                    )
+
+                    r = FaceResult(
+                        tracking_id=tid, status="match",
+                        employee_id=emp_id, full_name=full_name,
+                        emp_code=emp_code, dept_name=dept_name,
+                        confidence=confidence,
+                        bbox=BBox(x=bbox[0], y=bbox[1],
+                                  w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
+                        attendance_logged=logged,
+                    )
+                    tracker.set_result(tid, r)
+                    faces.append(r)
+
+                    if logged:
+                        await _redis.publish("omnisight:events", json.dumps({
+                            "event": "attendance_match",
+                            "station_id": station_id, "camera_id": camera_id,
+                            "employee_id": emp_id, "full_name": full_name,
+                            "emp_code": emp_code, "dept_name": dept_name,
+                            "confidence": round(confidence, 4),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }))
+
+                # ── Step 8: unknowns ──────────────────────────────────────────
+                for tid, bbox in unknowns:
+                    FACES_UNKNOWN.inc()
+                    await camera_manager.broadcast_unknown(
+                        camera_id=camera_id, station_id=station_id,
+                        bbox={"x": bbox[0], "y": bbox[1],
+                              "w": bbox[2]-bbox[0], "h": bbox[3]-bbox[1]},
+                    )
+                    unknown_count = await increment_unknown_count(station_id)
+                    if unknown_count >= cfg["unknown_threshold"]:
+                        await _redis.publish("omnisight:events", json.dumps({
+                            "event": "unknown_face_alert",
+                            "station_id": station_id, "camera_id": camera_id,
+                            "count": unknown_count,
+                            "threshold": cfg["unknown_threshold"],
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }))
+                    r = FaceResult(
+                        tracking_id=tid, status="unknown", confidence=0.0,
+                        bbox=BBox(x=bbox[0], y=bbox[1],
+                                  w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
+                        attendance_logged=False,
+                    )
+                    tracker.set_result(tid, r)
+                    faces.append(r)
+
+                await websocket.send_text(
+                    ScanResult(timestamp=datetime.now(timezone.utc),
+                               camera_id=camera_id, faces=faces).model_dump_json()
                 )
-                await websocket.send_text(scan.model_dump_json())
 
     except WebSocketDisconnect:
         logger.info(f"WS disconnected: camera={camera_id}")
@@ -426,6 +453,7 @@ async def scan_ws(
         except Exception:
             pass
     finally:
-        _last_processed.pop(camera_id, None)   # clean up FPS tracker
-        _trackers.pop(camera_id, None)          # clean up face tracker
+        _last_processed.pop(camera_id, None)
+        _trackers.pop(camera_id, None)
+        ACTIVE_CAMERAS.dec()
         await camera_manager.deregister(camera_id)

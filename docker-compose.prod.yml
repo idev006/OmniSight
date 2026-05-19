@@ -51,6 +51,7 @@ services:
       STORAGE_PATH:  /app/storage/faces
     volumes:
       - ./data/storage:/app/storage
+      - ./data/logs:/app/logs
       - ./models:/app/models:ro
       - insightface_models:/root/.insightface
     depends_on:

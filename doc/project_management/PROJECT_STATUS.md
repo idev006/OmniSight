@@ -1,6 +1,6 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-18 (Sprint 13 — production persistence hardening, backup scripts, anti-spoofing)  
+> **อัปเดตล่าสุด:** 2026-05-19 (Sprint 15d — load test verification, Prometheus endpoint, docs sync)  
 > **Project Manager / Lead Dev:** idev006  
 > **AI Pair:** Claude Sonnet 4.6  
 > **Repository:** https://github.com/idev006/OmniSight  
@@ -14,7 +14,7 @@ Phase 1 — Foundation     █████████████████�
 Phase 2 — AI Core        █████████████████░░░  85%  🔄 IN PROGRESS  (2.6, 2.7 LOW remaining)
 Phase 3 — HR Features    ████████████████░░░░  80%  🔄 IN PROGRESS  (3.5, 3.6 LOW remaining)
 Phase 4 — Multi-Camera   ████████████████████ 100%  ✅ DONE
-Phase 5 — Production     ████████████░░░░░░░░  60%  🔄 IN PROGRESS  (logging, perf test, cron, rtsp-agent)
+Phase 5 — Production     █████████████████░░░  85%  🔄 IN PROGRESS  (Grafana dashboard optional)
 ```
 
 ---
@@ -187,7 +187,7 @@ Phase 5 — Production     ████████████░░░░░�
 
 ---
 
-## Phase 5 — Production 🔄 IN PROGRESS (40%)
+## Phase 5 — Production 🔄 IN PROGRESS (85%)
 
 **เป้าหมาย:** ระบบพร้อม deploy จริง
 
@@ -211,13 +211,64 @@ Phase 5 — Production     ████████████░░░░░�
 | S13.15 | Anti-spoof gate in `enrollment.py` (HTTP 422) + `websocket.py` (status="spoof") | ✅ Done | 2026-05-18 |
 | S13.16 | Late/Absent detection — `GET /attendance/daily-report` + Daily Status tab | ✅ Done | 2026-05-18 |
 
+### Sprint 14 — Performance Testing & Dashboard KPI ✅ DONE
+**วันที่:** 2026-05-19 (Session 14)
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S14.1 | `backend/scripts/seed_performance.py` — 1,000 employees + 6,000 face vectors | ✅ Done | 2026-05-19 |
+| S14.2 | `backend/scripts/load_test.py` — WebSocket camera simulator (p50/p95/p99, CPU/RAM monitor) | ✅ Done | 2026-05-19 |
+| S14.3 | Dashboard KPI widgets — Present%, Late% real-time counters + bar chart | ✅ Done | 2026-05-19 |
+| S14.4 | Multi-channel notifications — Discord, Telegram, Slack, Line webhooks | ✅ Done | 2026-05-19 |
+
+### Sprint 15 — Structured Logging + RTSP Docker ✅ DONE
+**วันที่:** 2026-05-19 (Session 15)
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S15.1 | `app/core/logging_config.py` — JSON structured logging, TimedRotatingFileHandler, 7-day retention | ✅ Done | 2026-05-19 |
+| S15.2 | `main.py` — `setup_logging(settings.log_dir)` on startup | ✅ Done | 2026-05-19 |
+| S15.3 | `backend/agents/Dockerfile` + `docker-compose.rtsp.yml` (overlay pattern) | ✅ Done | 2026-05-19 |
+
+### Sprint 15b — Performance Architecture ✅ DONE
+**วันที่:** 2026-05-19 (Session 15 ต่อ)
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S15b.1 | AsyncQdrantClient + `search_batch()` — 1 HTTP round-trip for N faces | ✅ Done | 2026-05-19 |
+| S15b.2 | `face_detect_size` applied at engine load time (320px fast mode ใช้ได้แล้ว) | ✅ Done | 2026-05-19 |
+| S15b.3 | `predict_batch()` anti-spoof — N faces → 1 ONNX call | ✅ Done | 2026-05-19 |
+| S15b.4 | `_get_frame_settings()` cache 5s TTL + `asyncio.Lock` (stampede-safe) | ✅ Done | 2026-05-19 |
+| S15b.5 | `cv2.imdecode` in executor (unblocks event loop) | ✅ Done | 2026-05-19 |
+| S15b.6 | `inference_workers` default 4 (เพิ่มจาก 2) | ✅ Done | 2026-05-19 |
+
+### Sprint 15c — Prometheus Metrics + Tracker ✅ DONE
+**วันที่:** 2026-05-19 (Session 15 ต่อ)
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S15c.1 | `app/core/metrics.py` — 14 Prometheus metrics (3 histograms + 8 counters + 3 gauges) | ✅ Done | 2026-05-19 |
+| S15c.2 | Dynamic `ThreadPoolExecutor` scaling (admin เปลี่ยน `inference_workers` → ไม่ต้อง restart) | ✅ Done | 2026-05-19 |
+| S15c.3 | `app/core/tracker.py` rewrite — Hungarian algorithm (`scipy.optimize.linear_sum_assignment`) | ✅ Done | 2026-05-19 |
+| S15c.4 | `FaceEngine.warmup()` at startup — ไม่มี first-camera stall อีกต่อไป | ✅ Done | 2026-05-19 |
+
+### Sprint 15d — Load Test Verification + Prometheus Endpoint ✅ DONE
+**วันที่:** 2026-05-19 (Session 15 ต่อ)
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S15d.1 | `main.py` — `GET /metrics` endpoint (Prometheus text format, `include_in_schema=False`) | ✅ Done | 2026-05-19 |
+| S15d.2 | Load test verified: 10 cameras @ 2fps/30s — **0% error rate** ✅ | ✅ Done | 2026-05-19 |
+| S15d.3 | `PROJECT_STATUS.md` + `SPRINT_LOG.md` + `CLAUDE.md` synced to Sprint 15d | ✅ Done | 2026-05-19 |
+
 ### Remaining Production Work
 | # | งาน | สถานะ | Priority |
 |---|-----|--------|----------|
-| 5.3 | Logging & monitoring (structured JSON logs to file) | ⬜ Todo | 🟡 MED |
-| 5.5 | Performance test (1000 employees, 10+ cameras) | ⬜ Todo | 🟡 MED |
-| 5.8 | Cron/scheduler for automatic daily backup | ⬜ Todo | 🟢 LOW |
-| 5.9 | rtsp_agent Dockerfile (for production CCTV deployment) | ⬜ Todo | 🟢 LOW |
+| 5.3 | Logging & monitoring | ✅ Done (Sprint 15) | — |
+| 5.5 | Performance test (10 cameras) | ✅ Done (Sprint 15d) | — |
+| 5.9 | rtsp_agent Dockerfile | ✅ Done (Sprint 15) | — |
+| 5.10 | Grafana dashboard (visualize Prometheus metrics) | ⬜ Todo | 🟢 LOW |
+| 5.11 | GitHub push Sprint 9–15d | ⬜ Pending user approval | 🟡 MED |
 
 ---
 
@@ -266,3 +317,6 @@ Phase 5 — Production     ████████████░░░░░�
 | Production Docker stack | ✅ nginx SSL + backend + postgres + qdrant + redis | `docker-compose.prod.yml` |
 | Backup automation | ✅ scripts/backup.sh + backup.ps1 + restore.sh | 7-day rotation |
 | API health | ✅ all endpoints 200 | — |
+| **Load test (10 cam × 2fps × 30s)** | **error=0.00% ✅  p50=3,023ms  p95=3,547ms  CPU avg=395%  RAM avg=837MB** | error < 5% |
+| Prometheus metrics endpoint | ✅ `GET /metrics` — 14 omnisight metrics + python runtime | Grafana-ready |
+| Structured JSON logging | ✅ `logs/omnisight.log` daily rotation, 7-day retention | — |
