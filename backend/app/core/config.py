@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     inference_workers: int = 4         # Thread pool size for face engine (CPU-bound)
     # face_detect_size controls InsightFace det_size — set at startup, restart required.
     # Override via .env: FACE_DETECT_SIZE=320  (options: 160,320,640,1280)
-    face_detect_size: int = 640
+    face_detect_size: int = 320
 
     # Anti-spoofing
     anti_spoof_model_dir: str = str(_PROJECT_ROOT / "models" / "anti_spoof")

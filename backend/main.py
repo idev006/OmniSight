@@ -37,7 +37,7 @@ async def _seed_admin():
         # Performance
         ("max_fps_per_camera", "2",     "int",    "Max frames per second the backend processes per camera"),
         ("inference_workers",  "2",     "int",    "Number of parallel ONNX inference workers (restart required)"),
-        ("face_detect_size",   "640",   "int",    "Input resolution for face detector: 320 (fast) or 640 (accurate)"),
+        ("face_detect_size",   "320",   "int",    "Input resolution for face detector: 320 (fast, recommended) or 640 (accurate)"),
         # Anti-spoofing
         ("anti_spoof_enabled",   "0",   "int",    "Enable MiniFASNet anti-spoofing (1=on, 0=off). Requires model download."),
         ("anti_spoof_threshold", "0.6", "float",  "Minimum liveness score to accept as real face (0.0–1.0)"),

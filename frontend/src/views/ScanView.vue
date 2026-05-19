@@ -115,8 +115,14 @@ let ws            = null
 let mediaStream   = null
 let _frameTimer   = null
 let _fpsTimer     = null
+let _rafHandle    = null   // requestAnimationFrame handle for overlay render loop
 let _fpsCounter   = 0
+let _lastFaceTs   = 0      // timestamp of last recognition result
 let _destroyed    = false
+
+// Overlay fade config — boxes stay sharp for FADE_START ms, then fade to 0 by FADE_END ms
+const FADE_START_MS = 1200
+const FADE_END_MS   = 2400
 
 // ── Camera enumeration ────────────────────────────────────────────────────────
 async function _enumerateCameras() {
@@ -209,9 +215,9 @@ async function _start(stationId) {
           return
         }
 
-        // Recognition results
+        // Recognition results — store timestamp; render loop handles drawing
         activeFaces.value = data.faces || []
-        _drawBBoxes(data.faces || [])
+        _lastFaceTs = Date.now()
       } catch { /* ignore */ }
     }
 
@@ -224,9 +230,9 @@ async function _start(stationId) {
 
     ws.onerror = () => ws?.close()
 
-    // Start frame loop at 2 FPS
-    // Backend also has its own FPS gate, so this is a best-effort client-side limit
+    // Start frame send loop (2 fps) and continuous overlay render loop
     _startFrameLoop()
+    _startRenderLoop()
 
     // FPS counter
     _fpsTimer = setInterval(() => {
@@ -245,8 +251,10 @@ function _stop() {
   streaming.value      = false
   pausedByServer.value = false
   activeFaces.value    = []
+  _lastFaceTs          = 0
 
   _stopFrameLoop()
+  _stopRenderLoop()
   if (_fpsTimer) { clearInterval(_fpsTimer); _fpsTimer = null }
   if (ws)          { ws.close(); ws = null }
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
@@ -284,6 +292,34 @@ function _sendFrame() {
   }, 'image/jpeg', 0.70)
 }
 
+// ── Continuous overlay render loop (requestAnimationFrame) ───────────────────
+// Runs independently of WebSocket — draws the latest known faces every frame.
+// Boxes fade out gradually after FADE_START_MS ms without a new result,
+// so the UI never "snaps" black between recognition responses.
+function _startRenderLoop() {
+  _stopRenderLoop()
+  function loop() {
+    const faces = activeFaces.value
+    if (faces.length > 0) {
+      const age = _lastFaceTs ? Date.now() - _lastFaceTs : 0
+      let opacity = 1
+      if (age > FADE_START_MS) {
+        opacity = Math.max(0, 1 - (age - FADE_START_MS) / (FADE_END_MS - FADE_START_MS))
+      }
+      _drawBBoxes(faces, opacity)
+    } else if (canvasEl.value) {
+      const ctx = canvasEl.value.getContext('2d')
+      ctx?.clearRect(0, 0, canvasEl.value.width, canvasEl.value.height)
+    }
+    _rafHandle = requestAnimationFrame(loop)
+  }
+  _rafHandle = requestAnimationFrame(loop)
+}
+
+function _stopRenderLoop() {
+  if (_rafHandle) { cancelAnimationFrame(_rafHandle); _rafHandle = null }
+}
+
 // ── Bounding box overlay ──────────────────────────────────────────────────────
 /**
  * ScanView ส่ง frame แบบ fixed 640×480 เสมอ
@@ -294,7 +330,7 @@ function _sendFrame() {
  *   2. offset ของ letterbox / pillarbox
  *   3. scale จาก sent frame (640×480) → rendered area
  */
-function _drawBBoxes(faces) {
+function _drawBBoxes(faces, opacity = 1) {
   const canvas = canvasEl.value
   const video  = videoEl.value
   if (!canvas || !video) return
@@ -310,25 +346,23 @@ function _drawBBoxes(faces) {
 
   let renderedW, renderedH, offsetX, offsetY
   if (videoAR > containerAR) {
-    // Letterbox: bars บน-ล่าง
     renderedW = cW
     renderedH = cW / videoAR
     offsetX   = 0
     offsetY   = (cH - renderedH) / 2
   } else {
-    // Pillarbox: bars ซ้าย-ขวา
     renderedH = cH
     renderedW = cH * videoAR
     offsetX   = (cW - renderedW) / 2
     offsetY   = 0
   }
 
-  // Sent frame is always 640×480 — scale to rendered area
   const scaleX = renderedW / 640
   const scaleY = renderedH / 480
 
   const ctx = canvas.getContext('2d')
   ctx.clearRect(0, 0, cW, cH)
+  ctx.globalAlpha = opacity
 
   for (const face of faces) {
     const { x, y, w, h } = face.bbox
@@ -337,20 +371,26 @@ function _drawBBoxes(faces) {
     const dw = w * scaleX
     const dh = h * scaleY
 
-    ctx.strokeStyle = face.status === 'match' ? '#22c55e' : '#ef4444'
+    const color = face.status === 'match' ? '#22c55e' : '#ef4444'
+    ctx.strokeStyle = color
     ctx.lineWidth   = 2
     ctx.strokeRect(dx, dy, dw, dh)
 
-    // Label
+    // Label background + text
     if (face.full_name || face.status === 'unknown') {
       const label = face.status === 'match'
         ? `${face.full_name} ${(face.confidence * 100).toFixed(0)}%`
         : 'Unknown'
-      ctx.fillStyle = face.status === 'match' ? '#22c55e' : '#ef4444'
-      ctx.font      = 'bold 13px sans-serif'
-      ctx.fillText(label, dx + 2, dy - 5)
+      ctx.font = 'bold 13px sans-serif'
+      const textW = ctx.measureText(label).width
+      ctx.fillStyle = color
+      ctx.fillRect(dx, dy - 18, textW + 6, 18)
+      ctx.fillStyle = '#fff'
+      ctx.fillText(label, dx + 3, dy - 4)
     }
   }
+
+  ctx.globalAlpha = 1
 }
 </script>
 
