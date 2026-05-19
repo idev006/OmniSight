@@ -8,7 +8,7 @@
 
 | สิ่งของ | Path |
 |---------|------|
-| **เอกสารทุกฉบับ** | `F:\programming\python\OmniSight\doc\cluade_version\` |
+| **เอกสารทุกฉบับ** | `F:\programming\python\OmniSight\doc\claude_version\` |
 | **PM docs** | `F:\programming\python\OmniSight\doc\project_management\` |
 | **Python venv (3.12)** | `F:\programming\python\OmniSight\my_env\` ← **ที่เดียวเท่านั้น** |
 | Python exe | `F:\programming\python\OmniSight\my_env\Scripts\python.exe` |
@@ -16,7 +16,7 @@
 | Backend | `F:\programming\python\OmniSight\backend\` |
 | Frontend | `F:\programming\python\OmniSight\frontend\` |
 
-> **หมายเหตุ:** โฟลเดอร์เอกสารชื่อ `cluade_version` (สะกดผิดโดยตั้งใจ ห้ามแก้ชื่อ เพราะมีไฟล์อยู่แล้ว)
+> **หมายเหตุ:** โฟลเดอร์เอกสารชื่อ `claude_version`
 
 ---
 
@@ -193,8 +193,8 @@ Phase 5 — Production     █████████████████�
 | `doc/project_management/PROJECT_STATUS.md` | Dashboard + phase tracking |
 | `doc/project_management/SPRINT_LOG.md` | Sprint 1–15d history + context |
 | `doc/project_management/DECISIONS_LOG.md` | ADR-001 ถึง ADR-011 |
-| `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` | Multi-camera & Pilot Console design |
-| `doc/cluade_version/chapter_22_auth_authorization.md` | Auth/Authz — seq diagrams + API matrix |
+| `doc/claude_version/chapter_17_multi_camera_pilot_console.md` | Multi-camera & Pilot Console design |
+| `doc/claude_version/chapter_22_auth_authorization.md` | Auth/Authz — seq diagrams + API matrix |
 
 ---
 

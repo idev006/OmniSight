@@ -316,7 +316,7 @@ Sprint 7 attendance auto-logging: COMPLETE
 | shifts.py | DELETE /shifts/{id} | ❌ | ✅ require_admin |
 
 #### 10. Documentation
-- **ไฟล์ใหม่:** `doc/cluade_version/chapter_22_auth_authorization.md`
+- **ไฟล์ใหม่:** `doc/claude_version/chapter_22_auth_authorization.md`
   - 4 Mermaid sequence diagrams: Login Flow, Protected API Call, App Load/Session Restore, Logout Flow
   - API Authorization Matrix (ทุก endpoint)
   - Frontend Route Guard Matrix
@@ -999,8 +999,8 @@ With defaults (workers=2, 640px, inference=0.4s):
 เมื่อเริ่ม session ใหม่ให้อ่าน:
 1. `doc/project_management/PROJECT_STATUS.md` — dashboard + phase tracking (Sprint 13 latest)
 2. `doc/project_management/SPRINT_LOG.md` — Sprint 7–13 history
-3. `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design
-4. `doc/cluade_version/chapter_22_auth_authorization.md` — Auth/Authz (seq diagrams + matrix)
+3. `doc/claude_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design
+4. `doc/claude_version/chapter_22_auth_authorization.md` — Auth/Authz (seq diagrams + matrix)
 5. `doc/project_management/DECISIONS_LOG.md` — ADR-001 ถึง ADR-011
 
 **⚠️ Path สำคัญ — ห้ามผิด:**
