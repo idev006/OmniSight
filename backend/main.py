@@ -40,6 +40,14 @@ async def _seed_admin():
         # Anti-spoofing
         ("anti_spoof_enabled",   "0",   "int",    "Enable MiniFASNet anti-spoofing (1=on, 0=off). Requires model download."),
         ("anti_spoof_threshold", "0.6", "float",  "Minimum liveness score to accept as real face (0.0–1.0)"),
+        # Notifications
+        ("discord_webhook_url",  "",    "str",    "Discord Incoming Webhook URL for real-time alerts"),
+        ("telegram_bot_token",   "",    "str",    "Telegram Bot Token (from @BotFather)"),
+        ("telegram_chat_id",     "",    "str",    "Telegram Chat ID or Group ID to send alerts to"),
+        ("slack_webhook_url",    "",    "str",    "Slack Incoming Webhook URL for real-time alerts"),
+        ("notify_on_checkin",    "1",   "int",    "Send notification when employee checks in (1=on, 0=off)"),
+        ("notify_on_unknown",    "1",   "int",    "Send notification on unknown face alert (1=on, 0=off)"),
+        ("notify_on_spoof",      "1",   "int",    "Send notification when spoofing attempt is detected (1=on, 0=off)"),
     ]
 
     async with async_session_factory() as db:
@@ -92,13 +100,20 @@ async def lifespan(app: FastAPI):
     # Start heartbeat monitor (background task)
     heartbeat_task = asyncio.create_task(camera_manager.heartbeat_monitor())
 
+    # Start notification service (subscribes to omnisight:events Pub/Sub)
+    from app.services.notification_service import notification_loop
+    from app.db.redis import redis as _redis
+    notification_task = asyncio.create_task(notification_loop(_redis))
+
     logger.info(f"OmniSight started — ONNX Provider: {settings.onnxruntime_provider}")
     yield
 
     # Shutdown
     heartbeat_task.cancel()
+    notification_task.cancel()
     try:
-        await heartbeat_task
+        await asyncio.gather(heartbeat_task, notification_task,
+                             return_exceptions=True)
     except asyncio.CancelledError:
         pass
 

@@ -38,7 +38,15 @@ const routes = [
     path: '/',
     component: () => import('@/layouts/AppLayout.vue'),
     children: [
-      { path: '', redirect: '/scan' },
+      { path: '', redirect: '/dashboard' },
+
+      // ── Dashboard (HR + ADMIN) ──────────────────────────────────────────
+      {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: () => import('@/views/DashboardView.vue'),
+        meta: { title: 'Dashboard', roles: ['ADMIN', 'HR'] },
+      },
 
       // ── Operations (all authenticated users) ────────────────────────────
       {
@@ -122,7 +130,8 @@ router.beforeEach((to) => {
   if (to.meta.public) {
     // But if already logged in, bounce away from /login
     if (to.name === 'Login' && auth.isLoggedIn) {
-      return { name: 'Scan' }
+      const role = auth.user?.role
+      return { name: (role === 'ADMIN' || role === 'HR') ? 'Dashboard' : 'Scan' }
     }
     return
   }

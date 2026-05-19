@@ -60,6 +60,92 @@ async def list_attendance(
     ]
 
 
+@router.get("/kpi")
+async def attendance_kpi(
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
+    """
+    Dashboard KPI:
+    - today: present/late/absent counts + percentages
+    - weekly: last 7 days check-in counts (for trend chart)
+    - by_dept: today's check-ins grouped by department
+    """
+    today = datetime.now(timezone.utc).date()
+
+    # ── Today's unique check-ins ──────────────────────────────────────────────
+    today_logs = await db.execute(
+        select(
+            AttendanceLog.employee_id,
+            func.min(AttendanceLog.check_in_time).label("first_checkin"),
+        )
+        .where(cast(AttendanceLog.check_in_time, Date) == today)
+        .group_by(AttendanceLog.employee_id)
+    )
+    today_checkins = {row.employee_id: row.first_checkin for row in today_logs}
+
+    # ── All employees with shift assigned (for ABSENT calculation) ───────────
+    emp_rows = await db.execute(
+        select(Employee, Shift, Department.name.label("dept_name"))
+        .join(Shift, Shift.id == Employee.shift_id)
+        .join(Department, Department.id == Employee.dept_id, isouter=True)
+        .where(Employee.is_active == True)
+    )
+    employees_with_shift = emp_rows.all()
+
+    # ── Late threshold from Redis ─────────────────────────────────────────────
+    late_val = await _redis.get("setting:late_threshold_minutes")
+    late_threshold = int(late_val) if late_val else 15
+
+    present = late = absent = 0
+    for emp, shift, dept_name in employees_with_shift:
+        checkin = today_checkins.get(emp.id)
+        if checkin is None:
+            absent += 1
+        else:
+            shift_start = datetime.combine(today, shift.start_time, tzinfo=timezone.utc)
+            if checkin <= shift_start + timedelta(minutes=late_threshold):
+                present += 1
+            else:
+                late += 1
+
+    total_with_shift = len(employees_with_shift)
+    def pct(n): return round(n / total_with_shift * 100, 1) if total_with_shift else 0.0
+
+    # ── Weekly trend (last 7 days unique check-ins per day) ──────────────────
+    weekly = []
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        res = await db.execute(
+            select(func.count(func.distinct(AttendanceLog.employee_id)))
+            .where(cast(AttendanceLog.check_in_time, Date) == d)
+        )
+        weekly.append({"date": d.isoformat(), "count": res.scalar() or 0})
+
+    # ── By department (today) ─────────────────────────────────────────────────
+    dept_rows = await db.execute(
+        select(Department.name, func.count(func.distinct(AttendanceLog.employee_id)).label("count"))
+        .join(Employee, Employee.dept_id == Department.id)
+        .join(AttendanceLog, AttendanceLog.employee_id == Employee.id)
+        .where(cast(AttendanceLog.check_in_time, Date) == today)
+        .group_by(Department.name)
+        .order_by(func.count(func.distinct(AttendanceLog.employee_id)).desc())
+    )
+    by_dept = [{"dept": r.name, "count": r.count} for r in dept_rows]
+
+    return {
+        "date": today.isoformat(),
+        "today": {
+            "total":   total_with_shift,
+            "present": present, "present_pct": pct(present),
+            "late":    late,    "late_pct":    pct(late),
+            "absent":  absent,  "absent_pct":  pct(absent),
+        },
+        "weekly":  weekly,
+        "by_dept": by_dept,
+    }
+
+
 @router.get("/daily-report")
 async def daily_attendance_report(
     report_date: date = Query(default=None, alias="date"),

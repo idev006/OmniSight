@@ -160,6 +160,13 @@ const META = {
   max_fps_per_camera:        { label: 'Max FPS per Camera',     hint: '1–30',          min: 1,    max: 30   },
   inference_workers:         { label: 'Inference Workers',      hint: 'threads',       min: 1,    max: 16   },
   face_detect_size:          { label: 'Face Detect Input Size', hint: '320 or 640',    min: 160,  max: 1280 },
+  discord_webhook_url:       { label: 'Discord Webhook URL',    hint: 'https://discord.com/api/webhooks/...' },
+  telegram_bot_token:        { label: 'Telegram Bot Token',     hint: 'from @BotFather' },
+  telegram_chat_id:          { label: 'Telegram Chat ID',       hint: 'chat or group ID' },
+  slack_webhook_url:         { label: 'Slack Webhook URL',      hint: 'https://hooks.slack.com/services/...' },
+  notify_on_checkin:         { label: 'Notify on Check-in',     hint: '1=on, 0=off', min: 0, max: 1 },
+  notify_on_unknown:         { label: 'Notify on Unknown Face', hint: '1=on, 0=off', min: 0, max: 1 },
+  notify_on_spoof:           { label: 'Notify on Spoof',        hint: '1=on, 0=off', min: 0, max: 1 },
 }
 
 // ── Group definitions ──────────────────────────────────────────────────────
@@ -195,6 +202,17 @@ const groups = [
     icon: '⚡',
     iconBg: 'bg-warning/10 text-warning',
     keys: ['max_fps_per_camera', 'inference_workers', 'face_detect_size'],
+  },
+  {
+    id: 'notifications',
+    label: 'Notifications',
+    desc: 'Real-time alerts via Discord, Telegram, or Slack',
+    icon: '🔔',
+    iconBg: 'bg-info/10 text-info',
+    keys: [
+      'discord_webhook_url', 'telegram_bot_token', 'telegram_chat_id',
+      'slack_webhook_url', 'notify_on_checkin', 'notify_on_unknown', 'notify_on_spoof',
+    ],
   },
 ]
 

@@ -31,6 +31,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.security import get_current_user_ws
 from app.core.face_engine import face_engine, anti_spoof_engine
+from app.core.tracker import SimpleTracker
 from app.db.postgres import async_session_factory
 from app.db.qdrant import get_qdrant_sync
 from app.db.redis import (
@@ -62,6 +63,12 @@ _executor = ThreadPoolExecutor(
 # Frames arriving faster than 1/max_fps are discarded (not queued) to prevent
 # memory buildup when a fast source (e.g. 30 FPS webcam) feeds a slow backend.
 _last_processed: dict[str, float] = {}
+
+# ── Per-camera face trackers ──────────────────────────────────────────────────
+# SimpleTracker assigns persistent track_id across frames via IoU bbox matching.
+# Caches Qdrant search results per track — skips re-search for the same face
+# in consecutive frames, significantly reducing Qdrant + DB load.
+_trackers: dict[str, SimpleTracker] = {}
 
 
 async def _get_max_fps() -> float:
@@ -195,6 +202,12 @@ async def scan_ws(
                     )
                     continue
 
+                # ── Tracker update — assign persistent track_ids via IoU ───────
+                tracker = _trackers.setdefault(camera_id, SimpleTracker())
+                tracked = tracker.update(
+                    [(emb, bbox) for _, emb, bbox in detections]
+                )
+
                 # ── Station dept filter (Redis < 1ms) ─────────────────────────
                 dept_ids = await get_station_filter(station_id)
                 qdrant_filter = None
@@ -211,7 +224,19 @@ async def scan_ws(
                 spoof_enabled     = await get_anti_spoof_enabled() and anti_spoof_engine.available
                 spoof_threshold   = await get_anti_spoof_threshold() if spoof_enabled else 0.6
 
-                for tracking_id, embedding, bbox in detections:
+                for tracking_id, embedding, bbox in tracked:
+                    # ── Tracker cache hit — same face from recent frame ────────
+                    cached = tracker.get_cached_result(tracking_id)
+                    if cached is not None:
+                        # Refresh bbox (face may have moved slightly) but skip
+                        # Qdrant search, DB lookup, attendance logging, broadcast.
+                        faces.append(cached.model_copy(update={
+                            "tracking_id": tracking_id,
+                            "bbox": BBox(x=bbox[0], y=bbox[1],
+                                         w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
+                            "attendance_logged": False,  # already logged on first hit
+                        }))
+                        continue
                     # Anti-spoofing gate — reject photo/video replay attacks
                     if spoof_enabled:
                         is_live, spoof_score = await loop.run_in_executor(
@@ -219,14 +244,22 @@ async def scan_ws(
                             lambda b=bbox: anti_spoof_engine.check_liveness(frame, b, spoof_threshold),
                         )
                         if not is_live:
-                            faces.append(FaceResult(
+                            spoof_result = FaceResult(
                                 tracking_id=tracking_id,
                                 status="spoof",
                                 confidence=spoof_score,
                                 bbox=BBox(x=bbox[0], y=bbox[1],
                                           w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
                                 attendance_logged=False,
-                            ))
+                            )
+                            tracker.set_result(tracking_id, spoof_result)
+                            faces.append(spoof_result)
+                            await _redis.publish("omnisight:events", json.dumps({
+                                "event": "spoof_detected",
+                                "station_id": station_id,
+                                "camera_id": camera_id,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }))
                             continue
                     # Qdrant search — synchronous client → thread pool
                     results = await loop.run_in_executor(
@@ -306,7 +339,7 @@ async def scan_ws(
                             logged=logged,
                         )
 
-                        faces.append(FaceResult(
+                        match_result = FaceResult(
                             tracking_id=tracking_id,
                             status="match",
                             employee_id=employee_id,
@@ -317,7 +350,22 @@ async def scan_ws(
                             bbox=BBox(x=bbox[0], y=bbox[1],
                                       w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
                             attendance_logged=logged,
-                        ))
+                        )
+                        tracker.set_result(tracking_id, match_result)
+                        faces.append(match_result)
+
+                        if logged:
+                            await _redis.publish("omnisight:events", json.dumps({
+                                "event": "attendance_match",
+                                "station_id": station_id,
+                                "camera_id": camera_id,
+                                "employee_id": employee_id,
+                                "full_name": full_name,
+                                "emp_code": emp_code,
+                                "dept_name": dept_name,
+                                "confidence": round(confidence, 4),
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }))
                     else:
                         await camera_manager.broadcast_unknown(
                             camera_id=camera_id,
@@ -337,14 +385,16 @@ async def scan_ws(
                                 "threshold": threshold,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             }))
-                        faces.append(FaceResult(
+                        unknown_result = FaceResult(
                             tracking_id=tracking_id,
                             status="unknown",
                             confidence=0.0,
                             bbox=BBox(x=bbox[0], y=bbox[1],
                                       w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
                             attendance_logged=False,
-                        ))
+                        )
+                        tracker.set_result(tracking_id, unknown_result)
+                        faces.append(unknown_result)
 
                 scan = ScanResult(
                     timestamp=datetime.now(timezone.utc),
@@ -363,4 +413,5 @@ async def scan_ws(
             pass
     finally:
         _last_processed.pop(camera_id, None)   # clean up FPS tracker
+        _trackers.pop(camera_id, None)          # clean up face tracker
         await camera_manager.deregister(camera_id)
