@@ -78,7 +78,7 @@ powershell -File scripts\backup.ps1  # Windows
 ### Phase Progress
 ```
 Phase 1 — Foundation     ████████████████████ 100%  ✅ DONE
-Phase 2 — AI Core        █████████████████░░░  85%  🔄 IN PROGRESS
+Phase 2 — AI Core        ████████████████████ 100%  ✅ DONE
 Phase 3 — HR Features    ████████████████████ 100%  ✅ DONE
 Phase 4 — Multi-Camera   ████████████████████ 100%  ✅ DONE
 Phase 5 — Production     █████████████████░░░  85%  🔄 IN PROGRESS
@@ -169,12 +169,12 @@ Phase 5 — Production     █████████████████�
 
 ---
 
-## งานที่ต้องทำถัดไป (Sprint 16)
+## งานที่ต้องทำถัดไป (Sprint 17+)
 
 ### ลำดับความสำคัญ
-1. 🟡 **GitHub push** — Sprint 9–15d (ต้องขออนุญาต user ก่อน)
-2. 🟢 **Grafana dashboard** — visualize Prometheus metrics จาก `GET /metrics`
-3. 🟢 **Cron backup** — automatic daily backup scheduler
+1. 🟢 **Grafana dashboard** — visualize Prometheus metrics จาก `GET /metrics`
+2. 🟢 **Cron backup** — automatic daily backup scheduler
+3. 🟢 **Phase 5** — Production 85% → 100% (Grafana เป็น optional)
 
 ---
 
@@ -226,4 +226,4 @@ Phase 5 — Production     █████████████████�
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-19 (Sprint 15d — load test 0% error, /metrics endpoint, structured logging, RTSP Docker, Prometheus, Hungarian tracker, dynamic scaling)*
+*อัพเดทล่าสุด: 2026-05-19 (Sprint 16 — Phase 2/3 complete: ONNX auto-detect, Line/Email/absent notifications, Dashboard KPI)*

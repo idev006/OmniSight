@@ -49,6 +49,15 @@ async def _seed_admin():
         ("notify_on_checkin",    "1",   "int",    "Send notification when employee checks in (1=on, 0=off)"),
         ("notify_on_unknown",    "1",   "int",    "Send notification on unknown face alert (1=on, 0=off)"),
         ("notify_on_spoof",      "1",   "int",    "Send notification when spoofing attempt is detected (1=on, 0=off)"),
+        ("notify_on_absent",     "1",   "int",    "Send notification when employee is absent (checked every 5 min, 1=on, 0=off)"),
+        # Line Notify
+        ("line_notify_token",    "",    "str",    "Line Notify Token (from https://notify-bot.line.me/my/)"),
+        # Email (SMTP)
+        ("email_smtp_server",    "",    "str",    "SMTP server hostname (e.g., smtp.gmail.com)"),
+        ("email_smtp_port",      "587", "int",    "SMTP port (587=TLS/STARTTLS, 465=SSL)"),
+        ("email_smtp_user",      "",    "str",    "SMTP username / sender email address"),
+        ("email_smtp_password",  "",    "str",    "SMTP password or App Password"),
+        ("email_to_address",     "",    "str",    "Recipient email address for notifications"),
     ]
 
     async with async_session_factory() as db:
@@ -111,17 +120,22 @@ async def lifespan(app: FastAPI):
 
     # Start notification service (subscribes to omnisight:events Pub/Sub)
     from app.services.notification_service import notification_loop
+    from app.services.absent_alert_service import absent_alert_loop
     from app.db.redis import redis as _redis
-    notification_task = asyncio.create_task(notification_loop(_redis))
+    notification_task  = asyncio.create_task(notification_loop(_redis))
+    absent_alert_task  = asyncio.create_task(absent_alert_loop(_redis))
 
-    logger.info(f"OmniSight started — ONNX Provider: {settings.onnxruntime_provider}")
+    from app.core.face_engine import get_best_provider
+    active_provider = get_best_provider(settings.onnxruntime_provider)[0]
+    logger.info(f"OmniSight started — ONNX Provider: {active_provider}")
     yield
 
     # Shutdown
     heartbeat_task.cancel()
     notification_task.cancel()
+    absent_alert_task.cancel()
     try:
-        await asyncio.gather(heartbeat_task, notification_task,
+        await asyncio.gather(heartbeat_task, notification_task, absent_alert_task,
                              return_exceptions=True)
     except asyncio.CancelledError:
         pass
@@ -153,11 +167,13 @@ async def metrics():
 
 @app.get("/health")
 async def health():
+    from app.core.face_engine import get_best_provider
     active = camera_manager.list_active()
     return {
         "status": "ok",
         "version": "0.2.0",
         "cameras_active": len(active),
+        "onnx_provider": get_best_provider(settings.onnxruntime_provider)[0],
     }
 
 

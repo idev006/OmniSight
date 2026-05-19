@@ -1,6 +1,6 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-19 (Sprint 15d — load test verification, Prometheus endpoint, docs sync)  
+> **อัปเดตล่าสุด:** 2026-05-19 (Sprint 16 — Phase 2/3 completion: ONNX auto-detect, Dashboard KPI, Line/Email/Absent notifications)  
 > **Project Manager / Lead Dev:** idev006  
 > **AI Pair:** Claude Sonnet 4.6  
 > **Repository:** https://github.com/idev006/OmniSight  
@@ -11,8 +11,8 @@
 
 ```
 Phase 1 — Foundation     ████████████████████ 100%  ✅ DONE
-Phase 2 — AI Core        █████████████████░░░  85%  🔄 IN PROGRESS  (2.6, 2.7 LOW remaining)
-Phase 3 — HR Features    ████████████████░░░░  80%  🔄 IN PROGRESS  (3.5, 3.6 LOW remaining)
+Phase 2 — AI Core        ████████████████████ 100%  ✅ DONE
+Phase 3 — HR Features    ████████████████████ 100%  ✅ DONE
 Phase 4 — Multi-Camera   ████████████████████ 100%  ✅ DONE
 Phase 5 — Production     █████████████████░░░  85%  🔄 IN PROGRESS  (Grafana dashboard optional)
 ```
@@ -62,8 +62,8 @@ Phase 5 — Production     █████████████████�
 | 2.3 | JWT refresh token / expiry ยาวขึ้น | ✅ Done | 🔴 HIGH | Sprint 8: admin ตั้งค่า expire_hours ผ่าน UI Settings ได้ |
 | 2.4 | Anti-spoofing MiniFASNet | ✅ Done | 🟡 MED | Sprint 13: AntiSpoofEngine graceful degradation, enrollment+scan gates |
 | 2.5 | Face quality gate ก่อน enrollment | ✅ Done | 🟡 MED | Sprint 12: HTTP 422 reject, threshold configurable |
-| 2.6 | Multi-face tracking (ByteTrack) | ⬜ Todo | 🟢 LOW | กรณีกล้องเห็นหลายคน |
-| 2.7 | ONNX provider auto-detect (CUDA/DML) | ⬜ Todo | 🟢 LOW | ตอนนี้ fixed เป็น CPU |
+| 2.6 | Multi-face tracking (Hungarian algorithm) | ✅ Done | 🟢 LOW | Sprint 15c: `scipy.optimize.linear_sum_assignment` — globally optimal |
+| 2.7 | ONNX provider auto-detect (CUDA→DirectML→ROCm→CPU) | ✅ Done | 🟢 LOW | Sprint 16: `get_best_provider(override)` + config `onnxruntime_provider=auto` |
 
 ---
 
@@ -146,8 +146,8 @@ Phase 5 — Production     █████████████████�
 | 3.2 | Export CSV / Excel | ✅ Done | 🔴 HIGH | Sprint 9: logs CSV + summary CSV |
 | 3.3 | Late / Absent detection ตาม Shift | ✅ Done | 🟡 MED | Sprint 13: `GET /attendance/daily-report` + Daily Status tab in AttendanceView |
 | 3.4 | User management (multi-user login) | ✅ Done | 🟡 MED | Sprint 8 |
-| 3.5 | Dashboard KPI (present %, late %) | ⬜ Todo | 🟢 LOW |
-| 3.6 | Email/Line notification เมื่อ absent | ⬜ Todo | 🟢 LOW |
+| 3.5 | Dashboard KPI (present %, late %, absent %) | ✅ Done | 🟢 LOW | Sprint 14: `/attendance/kpi` + DashboardView KPI cards + weekly chart |
+| 3.6 | Line Notify + Email + Absent alert | ✅ Done | 🟢 LOW | Sprint 16: Line Notify API, SMTP email, absent_alert_service.py (5-min scan) |
 
 ---
 
@@ -261,6 +261,19 @@ Phase 5 — Production     █████████████████�
 | S15d.2 | Load test verified: 10 cameras @ 2fps/30s — **0% error rate** ✅ | ✅ Done | 2026-05-19 |
 | S15d.3 | `PROJECT_STATUS.md` + `SPRINT_LOG.md` + `CLAUDE.md` synced to Sprint 15d | ✅ Done | 2026-05-19 |
 
+### Sprint 16 — Phase 2/3 Completion ✅ DONE
+**วันที่:** 2026-05-19 (Session 16)
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S16.1 | `get_best_provider(override)` — CUDA→DirectML→ROCm→CPU fallback + manual override via config | ✅ Done | 2026-05-19 |
+| S16.2 | `config.py` — `onnxruntime_provider` default `"auto"` + `/health` exposes active provider | ✅ Done | 2026-05-19 |
+| S16.3 | `notification_service.py` — Line Notify API + SMTP Email (asyncio.to_thread) | ✅ Done | 2026-05-19 |
+| S16.4 | `absent_alert_service.py` — background scan every 5 min, Redis dedup key per day | ✅ Done | 2026-05-19 |
+| S16.5 | `main.py` — seed 6 new settings (line/email/notify_on_absent) + start absent_alert_loop | ✅ Done | 2026-05-19 |
+| S16.6 | `SettingsView.vue` — Line Notify + Email (SMTP) fields in Notifications group | ✅ Done | 2026-05-19 |
+| S16.7 | Phase 2 → 100%, Phase 3 → 100% ✅ | ✅ Done | 2026-05-19 |
+
 ### Remaining Production Work
 | # | งาน | สถานะ | Priority |
 |---|-----|--------|----------|
@@ -268,7 +281,6 @@ Phase 5 — Production     █████████████████�
 | 5.5 | Performance test (10 cameras) | ✅ Done (Sprint 15d) | — |
 | 5.9 | rtsp_agent Dockerfile | ✅ Done (Sprint 15) | — |
 | 5.10 | Grafana dashboard (visualize Prometheus metrics) | ⬜ Todo | 🟢 LOW |
-| 5.11 | GitHub push Sprint 9–15d | ⬜ Pending user approval | 🟡 MED |
 
 ---
 

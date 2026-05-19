@@ -254,9 +254,9 @@ const saving    = reactive({})
 const saved     = reactive({})
 const showSecret = reactive({})
 
-const BOOL_KEYS           = ['anti_spoof_enabled', 'notify_on_checkin', 'notify_on_unknown', 'notify_on_spoof']
-const STRING_KEYS         = ['discord_webhook_url', 'telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url']
-const SECRET_KEYS         = ['telegram_bot_token', 'discord_webhook_url', 'slack_webhook_url']
+const BOOL_KEYS           = ['anti_spoof_enabled', 'notify_on_checkin', 'notify_on_unknown', 'notify_on_spoof', 'notify_on_absent']
+const STRING_KEYS         = ['discord_webhook_url', 'telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url', 'line_notify_token', 'email_smtp_server', 'email_smtp_user', 'email_smtp_password', 'email_to_address']
+const SECRET_KEYS         = ['telegram_bot_token', 'discord_webhook_url', 'slack_webhook_url', 'line_notify_token', 'email_smtp_password']
 const FLOAT_GRADIENT_KEYS = ['match_threshold', 'min_face_quality', 'anti_spoof_threshold']
 const FACE_DETECT_STEPS   = [160, 320, 640, 1280]
 
@@ -280,6 +280,13 @@ const META = {
   notify_on_checkin:         { label: 'Notify on Check-in',     hint: '1=on, 0=off',   min: 0,    max: 1    },
   notify_on_unknown:         { label: 'Notify on Unknown Face', hint: '1=on, 0=off',   min: 0,    max: 1    },
   notify_on_spoof:           { label: 'Notify on Spoof',        hint: '1=on, 0=off',   min: 0,    max: 1    },
+  notify_on_absent:          { label: 'Notify on Absent',       hint: '1=on, 0=off',   min: 0,    max: 1    },
+  line_notify_token:         { label: 'Line Notify Token',      hint: 'from notify-bot.line.me/my/' },
+  email_smtp_server:         { label: 'SMTP Server',            hint: 'e.g. smtp.gmail.com' },
+  email_smtp_port:           { label: 'SMTP Port',              hint: '587=TLS, 465=SSL',  min: 1, max: 65535 },
+  email_smtp_user:           { label: 'SMTP Username',          hint: 'sender email address' },
+  email_smtp_password:       { label: 'SMTP Password',          hint: 'password or App Password' },
+  email_to_address:          { label: 'Recipient Email',        hint: 'notification destination address' },
 }
 
 // ── Group definitions ──────────────────────────────────────────────────────
@@ -288,7 +295,7 @@ const groups = [
   { id: 'face',          label: 'Face Recognition',  desc: 'Matching accuracy and enrollment quality thresholds',   icon: '👁️', iconBg: 'bg-primary/10 text-primary', keys: ['match_threshold', 'min_face_quality', 'anti_spoof_enabled', 'anti_spoof_threshold'] },
   { id: 'attendance',    label: 'Attendance',         desc: 'Cooldown period and alert triggers',                    icon: '📋', iconBg: 'bg-success/10 text-success', keys: ['cooldown_seconds', 'unknown_face_alert', 'late_threshold_minutes'] },
   { id: 'performance',   label: 'Performance',        desc: 'Camera throughput and inference engine settings',       icon: '⚡', iconBg: 'bg-warning/10 text-warning', keys: ['max_fps_per_camera', 'inference_workers', 'face_detect_size'] },
-  { id: 'notifications', label: 'Notifications',      desc: 'Real-time alerts via Discord, Telegram, or Slack',     icon: '🔔', iconBg: 'bg-info/10 text-info',       keys: ['discord_webhook_url', 'telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url', 'notify_on_checkin', 'notify_on_unknown', 'notify_on_spoof'] },
+  { id: 'notifications', label: 'Notifications',      desc: 'Real-time alerts via Discord, Telegram, Slack, Line, or Email', icon: '🔔', iconBg: 'bg-info/10 text-info', keys: ['discord_webhook_url', 'telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url', 'line_notify_token', 'email_smtp_server', 'email_smtp_port', 'email_smtp_user', 'email_smtp_password', 'email_to_address', 'notify_on_checkin', 'notify_on_unknown', 'notify_on_spoof', 'notify_on_absent'] },
 ]
 
 // ── Computed lookup ────────────────────────────────────────────────────────

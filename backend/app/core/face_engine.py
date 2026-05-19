@@ -9,8 +9,28 @@ import cv2
 logger = logging.getLogger(__name__)
 
 
-def get_best_provider() -> list[str]:
+_PROVIDER_MAP = {
+    "cuda":     "CUDAExecutionProvider",
+    "directml": "DirectMLExecutionProvider",
+    "rocm":     "ROCmExecutionProvider",
+    "cpu":      "CPUExecutionProvider",
+}
+
+
+def get_best_provider(override: str = "auto") -> list[str]:
+    """
+    Return the best available ONNX provider.
+    override: "auto" → detect best available; "cuda"/"directml"/"rocm"/"cpu" → force that provider.
+    """
     available = ort.get_available_providers()
+    if override != "auto":
+        forced = _PROVIDER_MAP.get(override.lower())
+        if forced and forced in available:
+            return [forced]
+        logger.warning(
+            f"Requested provider '{override}' not available (installed: {available}). "
+            "Falling back to auto-detect."
+        )
     priority = [
         "CUDAExecutionProvider",
         "DirectMLExecutionProvider",
@@ -23,8 +43,8 @@ def get_best_provider() -> list[str]:
     return ["CPUExecutionProvider"]
 
 
-def build_session(model_path: str) -> ort.InferenceSession:
-    providers = get_best_provider()
+def build_session(model_path: str, override: str = "auto") -> ort.InferenceSession:
+    providers = get_best_provider(override)
     opts = ort.SessionOptions()
     if providers[0] == "CPUExecutionProvider":
         opts.intra_op_num_threads = cpu_count()
@@ -52,10 +72,11 @@ class FaceEngine:
         from app.core.config import get_settings
         s = get_settings()
         det_size = (s.face_detect_size, s.face_detect_size)
-        self._app = FaceAnalysis(name="buffalo_l", providers=get_best_provider())
+        providers = get_best_provider(s.onnxruntime_provider)
+        self._app = FaceAnalysis(name="buffalo_l", providers=providers)
         # ctx_id=-1  →  CPU-safe (ctx_id=0 raises on machines without CUDA)
         self._app.prepare(ctx_id=-1, det_size=det_size)
-        logger.info(f"FaceEngine loaded: det_size={det_size} providers={get_best_provider()}")
+        logger.info(f"FaceEngine loaded: det_size={det_size} provider={providers[0]}")
 
     def warmup(self) -> None:
         """

@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     # Storage
     storage_path: str = _STORAGE_DEFAULT
 
-    # ONNX
-    onnxruntime_provider: str = "cpu"
+    # ONNX — "auto" = detect best (CUDA→DirectML→ROCm→CPU); or force: "cuda"/"directml"/"rocm"/"cpu"
+    onnxruntime_provider: str = "auto"
 
     # Face Engine
     min_face_quality: float = 0.75
