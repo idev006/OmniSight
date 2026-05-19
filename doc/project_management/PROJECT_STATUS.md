@@ -1,6 +1,6 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-18 (Sprint 12 — all settings live, face snapshot, quality gate, unknown alert)  
+> **อัปเดตล่าสุด:** 2026-05-18 (Sprint 13 — production persistence hardening, backup scripts, anti-spoofing)  
 > **Project Manager / Lead Dev:** idev006  
 > **AI Pair:** Claude Sonnet 4.6  
 > **Repository:** https://github.com/idev006/OmniSight  
@@ -14,7 +14,7 @@ Phase 1 — Foundation     █████████████████�
 Phase 2 — AI Core        ███████████████░░░░░  75%  🔄 IN PROGRESS
 Phase 3 — HR Features    ████████████░░░░░░░░  60%  🔄 IN PROGRESS
 Phase 4 — Multi-Camera   █████████████████░░░  90%  🔄 IN PROGRESS
-Phase 5 — Production     ░░░░░░░░░░░░░░░░░░░░   0%  ⏳ PENDING
+Phase 5 — Production     ████████░░░░░░░░░░░░  40%  🔄 IN PROGRESS
 ```
 
 ---
@@ -60,7 +60,7 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | 2.1 | Attendance auto-logging เมื่อ scan match | ✅ Done | 🔴 HIGH | Sprint 7: INSERT + service layer |
 | 2.2 | Cooldown ป้องกัน log ซ้ำ (≤5 นาที) | ✅ Done | 🔴 HIGH | Sprint 7: Redis TTL 300s verified |
 | 2.3 | JWT refresh token / expiry ยาวขึ้น | ✅ Done | 🔴 HIGH | Sprint 8: admin ตั้งค่า expire_hours ผ่าน UI Settings ได้ |
-| 2.4 | Anti-spoofing MiniFASNet | ⬜ Todo | 🟡 MED | เพิ่มหลัง attendance log เสร็จ |
+| 2.4 | Anti-spoofing MiniFASNet | ✅ Done | 🟡 MED | Sprint 13: AntiSpoofEngine graceful degradation, enrollment+scan gates |
 | 2.5 | Face quality gate ก่อน enrollment | ✅ Done | 🟡 MED | Sprint 12: HTTP 422 reject, threshold configurable |
 | 2.6 | Multi-face tracking (ByteTrack) | ⬜ Todo | 🟢 LOW | กรณีกล้องเห็นหลายคน |
 | 2.7 | ONNX provider auto-detect (CUDA/DML) | ⬜ Todo | 🟢 LOW | ตอนนี้ fixed เป็น CPU |
@@ -144,7 +144,7 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 |---|-----|--------|----------|
 | 3.1 | Attendance report (daily/monthly summary) | ✅ Done | 🔴 HIGH | Sprint 9: bar chart + dept breakdown |
 | 3.2 | Export CSV / Excel | ✅ Done | 🔴 HIGH | Sprint 9: logs CSV + summary CSV |
-| 3.3 | Late / Absent detection ตาม Shift | ⬜ Todo | 🟡 MED |
+| 3.3 | Late / Absent detection ตาม Shift | ✅ Done | 🟡 MED | Sprint 13: `GET /attendance/daily-report` + Daily Status tab in AttendanceView |
 | 3.4 | User management (multi-user login) | ✅ Done | 🟡 MED | Sprint 8 |
 | 3.5 | Dashboard KPI (present %, late %) | ⬜ Todo | 🟢 LOW |
 | 3.6 | Email/Line notification เมื่อ absent | ⬜ Todo | 🟢 LOW |
@@ -187,19 +187,37 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 
 ---
 
-## Phase 5 — Production ⏳ PENDING
+## Phase 5 — Production 🔄 IN PROGRESS (40%)
 
 **เป้าหมาย:** ระบบพร้อม deploy จริง
 
+### Sprint 13 — Production Docker Stack + Backup System
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S13.1 | `backend/Dockerfile` — Python 3.12-slim + pre-download buffalo_l | ✅ Done | 2026-05-18 |
+| S13.2 | `nginx/Dockerfile` — multi-stage: build Vue + nginx SSL proxy | ✅ Done | 2026-05-18 |
+| S13.3 | `nginx/nginx.conf` — HTTP→HTTPS, WebSocket proxy, security headers | ✅ Done | 2026-05-18 |
+| S13.4 | `nginx/generate_self_signed_cert.sh` — dev SSL cert generator | ✅ Done | 2026-05-18 |
+| S13.5 | `docker-compose.prod.yml` — full production stack | ✅ Done | 2026-05-18 |
+| S13.6 | `.env.prod.example` — template with CHANGE_ME placeholders | ✅ Done | 2026-05-18 |
+| S13.7 | Fix `storage` → `./data/storage` bind mount (host-accessible) | ✅ Done | 2026-05-18 |
+| S13.8 | Add `insightface_models` named volume (survive rebuild) | ✅ Done | 2026-05-18 |
+| S13.9 | Add Qdrant healthcheck + backend `depends_on: qdrant: healthy` | ✅ Done | 2026-05-18 |
+| S13.10 | `scripts/backup.sh` — pg_dump + Qdrant snapshot + storage tar (7-day rotation) | ✅ Done | 2026-05-18 |
+| S13.11 | `scripts/restore.sh` — full restore from backup date | ✅ Done | 2026-05-18 |
+| S13.12 | `scripts/backup.ps1` — Windows PowerShell backup (dev machine) | ✅ Done | 2026-05-18 |
+| S13.13 | BUG-002 — orphaned Qdrant vector reconcile script (`backend/scripts/reconcile_qdrant.py`) | ✅ Done | 2026-05-18 |
+| S13.14 | Anti-spoofing MiniFASNet — `AntiSpoofEngine` in `face_engine.py` | ✅ Done | 2026-05-18 |
+| S13.15 | Anti-spoof gate in `enrollment.py` (HTTP 422) + `websocket.py` (status="spoof") | ✅ Done | 2026-05-18 |
+| S13.16 | Late/Absent detection — `GET /attendance/daily-report` + Daily Status tab | ✅ Done | 2026-05-18 |
+
+### Remaining Production Work
 | # | งาน | สถานะ | Priority |
 |---|-----|--------|----------|
-| 5.1 | Docker production compose (nginx + SSL) | ⬜ Todo | 🔴 HIGH |
-| 5.2 | Strong SECRET_KEY + env hardening | ⬜ Todo | 🔴 HIGH |
-| 5.3 | Logging & monitoring (structured logs) | ⬜ Todo | 🟡 MED |
-| 5.4 | Backup strategy (Postgres + Qdrant) | ⬜ Todo | 🟡 MED |
+| 5.3 | Logging & monitoring (structured JSON logs to file) | ⬜ Todo | 🟡 MED |
 | 5.5 | Performance test (1000 employees, 10+ cameras) | ⬜ Todo | 🟡 MED |
-| 5.6 | README.md สำหรับ GitHub | ⬜ Todo | 🟢 LOW |
-| 5.7 | CLAUDE.md สำหรับ AI session ถัดไป | ⬜ Todo | 🟢 LOW |
+| 5.8 | Cron/scheduler for automatic daily backup | ⬜ Todo | 🟢 LOW |
+| 5.9 | rtsp_agent Dockerfile (for production CCTV deployment) | ⬜ Todo | 🟢 LOW |
 
 ---
 
@@ -208,7 +226,7 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | ID | ปัญหา | Severity | สถานะ |
 |----|-------|----------|-------|
 | BUG-001 | JWT token หมดอายุเร็ว — test script fail slot 0 overwrite | Medium | ✅ Fixed Sprint 8: admin-configurable via Settings UI |
-| BUG-002 | Orphaned Qdrant vector (7 vectors แทนที่จะเป็น 6) | Low | 🟡 Open |
+| BUG-002 | Orphaned Qdrant vector (7 vectors แทนที่จะเป็น 6) | Low | ✅ Fixed Sprint 13: reconcile_qdrant.py ลบ 4 orphans, collection = 6 |
 | BUG-003 | Face detection ล้มเหลวสำหรับรูปขนาดเล็ก 640x480 (biden.jpg แนวตั้ง) | Info | ✅ By Design |
 | BUG-004 | `PointIdsList` แทน raw list ใน Qdrant delete — แก้แล้ว | Medium | ✅ Fixed |
 | BUG-005 | uvicorn `--reload` Windows zombie process — กระบวนการเก่าถือ port 8000 หลังปิด terminal | High | ✅ Fixed Sprint 12: `taskkill` ใน `start-dev.bat` |
@@ -242,5 +260,9 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | Unknown face alert | ✅ verified (Redis INCR + publish) | threshold configurable |
 | Min face quality gate | ✅ verified (HTTP 422 if below threshold) | threshold configurable |
 | Settings live reload | ✅ 8/8 settings working (DB→Redis sync) | no restart needed |
-| Qdrant collection status | 🟢 green | green |
+| Qdrant collection status | 🟢 green (6 vectors, 0 orphans) | green |
+| Anti-spoofing | ✅ framework ready (model required at `models/anti_spoof/`) | graceful degradation |
+| Late/Absent detection | ✅ PRESENT/LATE/ABSENT per shift | configurable threshold |
+| Production Docker stack | ✅ nginx SSL + backend + postgres + qdrant + redis | `docker-compose.prod.yml` |
+| Backup automation | ✅ scripts/backup.sh + backup.ps1 + restore.sh | 7-day rotation |
 | API health | ✅ all endpoints 200 | — |

@@ -654,11 +654,104 @@ timeout /t 1 /nobreak >nul
 
 ---
 
+---
+
+## Sprint 13 — Production Hardening + Backup System + Anti-Spoofing ✅ DONE
+**วันที่:** 2026-05-18 (Session 9)  
+**เป้าหมาย:** Phase 5 Production stack, backup automation, anti-spoofing MiniFASNet, late/absent detection, BUG-002 fix
+
+### สิ่งที่ทำ
+
+#### 1. BUG-002 — Orphaned Qdrant Vector Fix
+- สร้าง `backend/scripts/reconcile_qdrant.py`
+- Scroll all Qdrant point IDs → compare with PostgreSQL `FaceTemplate.qdrant_id` → delete orphans
+- ผล: ลบ 4 orphaned vectors, collection สะอาดที่ 6 vectors
+
+#### 2. Late/Absent Detection — `backend/app/api/attendance.py`
+- `GET /api/v1/attendance/daily-report?date=YYYY-MM-DD&dept_id=N`
+- อ่าน `late_threshold_minutes` จาก Redis แบบ live
+- Query employees ที่มี `shift_id IS NOT NULL` → ค้นหา first check-in ต่อ date
+- เปรียบเทียบกับ `shift.start_time + late_threshold` → PRESENT / LATE / ABSENT
+- Protected by `require_hr`
+- Route ต้องอยู่ก่อน `/{log_id}/snapshot` เพื่อป้องกัน route conflict
+
+#### 3. Daily Status Tab — `frontend/src/views/AttendanceView.vue`
+- Tab ที่ 3 "Daily Status"
+- KPI stats bar: Total / Present(green) / Late(yellow) / Absent(red)
+- Table: status badge, employee, code, dept, shift, check-in time, minutes late
+- `dailyDate` datepicker, `dailyDept` filter, `exportDailyCSV()`
+
+#### 4. Settings — `frontend/src/views/SettingsView.vue`
+- เพิ่ม `late_threshold_minutes` (Attendance group)
+- เพิ่ม `anti_spoof_enabled`, `anti_spoof_threshold` (Face Recognition group)
+
+#### 5. Anti-Spoofing MiniFASNet — `backend/app/core/face_engine.py`
+```python
+class AntiSpoofEngine:
+    # MiniFASNet V2 (2.7_80x80_MiniFASNetV2.onnx)
+    # input: (batch, 3, 80, 80) NCHW float32 ImageNet-normalized
+    # output: (batch, 3) logits → softmax()[1] = liveness score
+    
+    def init(self, model_dir: str)          # called at startup
+    def available -> bool                   # graceful degradation
+    def predict(self, img, bbox) -> float   # returns 1.0 if model absent
+    def check_liveness(self, img, bbox, threshold) -> tuple[bool, float]
+```
+- Model path: `models/anti_spoof/2.7_80x80_MiniFASNetV2.onnx`
+- Graceful: ถ้าไม่มี model → `available=False` → ทุก check ผ่าน (True, 1.0)
+- ใช้ใน `enrollment.py`: HTTP 422 ถ้า liveness < threshold
+- ใช้ใน `websocket.py`: `status="spoof"` FaceResult (ไม่ log attendance)
+
+#### 6. `backend/app/core/config.py`
+- เพิ่ม `anti_spoof_model_dir: str` (absolute path to models/anti_spoof/)
+
+#### 7. `backend/main.py`
+- Anti-spoof engine init ใน lifespan: `anti_spoof_engine.init(settings.anti_spoof_model_dir)`
+- เพิ่ม DEFAULT_SETTINGS: `late_threshold_minutes=15`, `anti_spoof_enabled=0`, `anti_spoof_threshold=0.6`
+
+#### 8. Production Docker Stack
+- `backend/Dockerfile` — Python 3.12-slim, pre-download InsightFace buffalo_l
+- `nginx/Dockerfile` — multi-stage: Vue build (node:20) + nginx:1.27 + SSL config
+- `nginx/nginx.conf` — HTTP→HTTPS redirect, TLSv1.2/1.3, WebSocket proxy, HSTS
+- `nginx/generate_self_signed_cert.sh` — openssl self-signed cert for dev
+- `docker-compose.prod.yml` — full production stack (postgres + qdrant + redis + backend + nginx)
+- `.env.prod.example` — template with CHANGE_ME placeholders
+
+#### 9. Persistence Risk Analysis & Fix
+**3 risks identified by senior engineer analysis:**
+1. `storage:/app/storage` named volume → не accessible from host for backup
+2. InsightFace models in image layer → re-download 500MB on `docker compose build --no-cache`
+3. Zero backup automation
+
+**Fixes applied:**
+- `storage` named volume → `./data/storage` bind mount (host-accessible)
+- `insightface_models:/root/.insightface` named volume (persists across rebuilds)
+- Qdrant healthcheck + `backend depends_on: qdrant: condition: service_healthy`
+
+#### 10. Backup Scripts
+- `scripts/backup.sh` — pg_dump compressed + Qdrant REST snapshot + storage tar.gz, 7-day rotation
+- `scripts/restore.sh` — full restore (drop+recreate DB, Qdrant snapshot upload, storage extract)
+- `scripts/backup.ps1` — Windows PowerShell version for dev machine
+
+#### 11. .gitignore Updates
+- เพิ่ม `data/` (bind mount production data)
+- เพิ่ม `backups/` (backup archives)
+- เพิ่ม `models/` (large binary files — download separately)
+
+### ผลลัพธ์
+- Qdrant collection: 6 vectors (0 orphans) ✅
+- Production Docker stack: ready to deploy with `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`
+- Backup: `bash scripts/backup.sh` → creates `backups/YYYY-MM-DD_HHMMSS/`
+- Anti-spoof: framework ready; model at `models/anti_spoof/2.7_80x80_MiniFASNetV2.onnx` (1.7MB)
+- Late/Absent: configurable threshold via Settings UI, Daily Status tab in Attendance page
+
+---
+
 ## Context สำหรับ AI Session ถัดไป
 
 เมื่อเริ่ม session ใหม่ให้อ่าน:
-1. `doc/project_management/PROJECT_STATUS.md` — dashboard + phase tracking (Sprint 12 latest)
-2. `doc/project_management/SPRINT_LOG.md` — Sprint 7–12 history
+1. `doc/project_management/PROJECT_STATUS.md` — dashboard + phase tracking (Sprint 13 latest)
+2. `doc/project_management/SPRINT_LOG.md` — Sprint 7–13 history
 3. `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` — Multi-camera design
 4. `doc/cluade_version/chapter_22_auth_authorization.md` — Auth/Authz (seq diagrams + matrix)
 5. `doc/project_management/DECISIONS_LOG.md` — ADR-001 ถึง ADR-011
@@ -675,28 +768,50 @@ timeout /t 1 /nobreak >nul
 **Environment:**
 - Backend start: `.\start-dev.bat` หรือ `.\start-backend.bat` (uvicorn port 8000)
 - `start-dev.bat` มี `taskkill` ก่อน start — ป้องกัน zombie process
+- Production: `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`
 - DB migration: `migrate.bat upgrade`
 - Services: Docker → PostgreSQL (5432), Qdrant (6333), Redis (6379)
 
-**State ปัจจุบัน (Sprint 12 done):**
+**State ปัจจุบัน (Sprint 13 done):**
 - emp1: enrolled 6/6 slots ✅, has attendance logs with snapshots
 - emp2: enrolled 0/6
 - sta1 (ccd829a0): ไม่มี dept filter
 - attendance_logs: 27+ records, records id≥27 มี snapshot_path
-- Qdrant: 7 vectors (6 จริง + 1 orphaned, BUG-002 open)
-- GitHub: https://github.com/idev006/OmniSight (ยังไม่ push Sprint 9–12)
+- Qdrant: 6 vectors (BUG-002 ✅ fixed — 0 orphans)
+- GitHub: https://github.com/idev006/OmniSight (ยังไม่ push Sprint 9–13)
 - Users: admin (ADMIN), hr1 (HR), operator1 (OPERATOR) — bcrypt hashed
-- Settings (admin ตั้งไว้): cooldown=10s, max_fps=15, match_threshold=0.70, min_quality=0.60
+- Settings: cooldown=10s, max_fps=15, match_threshold=0.70, min_quality=0.60, late_threshold_minutes=15, anti_spoof_enabled=0
 
-**Settings Architecture (Sprint 12):**
-- Settings API: เขียน DB + Redis ทุกครั้งที่ save
-- Startup: sync ทุก key จาก DB → Redis ทุกครั้งที่ restart backend
-- Live read keys: `setting:match_threshold`, `setting:max_fps_per_camera`, `setting:cooldown_seconds`, `setting:min_face_quality`, `setting:unknown_face_alert`
-- Static keys (restart required): `inference_workers`, `face_detect_size`
+**Anti-spoof model:**
+- Path: `models/anti_spoof/2.7_80x80_MiniFASNetV2.onnx`
+- ถ้าไม่มีไฟล์ → `AntiSpoofEngine.available = False` → graceful degradation (ระบบทำงานปกติ ไม่ block)
+- เปิด: ตั้ง `anti_spoof_enabled=1` ใน Settings UI
+
+**Production deployment steps:**
+```bash
+# 1. Generate SSL cert (first time)
+sh nginx/generate_self_signed_cert.sh
+
+# 2. Copy and fill env file
+cp .env.prod.example .env.prod
+# Edit .env.prod with real passwords
+
+# 3. Start stack
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+
+# 4. Backup (run daily via cron)
+bash scripts/backup.sh
+```
 
 **⚠️ uvicorn Windows zombie process warning:**
 - อย่าปิด terminal ด้วย X — ให้ Ctrl+C แทน
 - ถ้า backend ไม่ตอบสนองถูกต้อง ให้รัน `taskkill /F /IM python.exe` ก่อนเสมอ
+
+**Sprint 14 priorities:**
+1. GitHub push Sprint 9–13 (ต้องขออนุญาต user)
+2. Logging & monitoring: structured JSON logs → file rotation
+3. Performance test: 1000 employees, 10+ cameras
+4. rtsp_agent Dockerfile (production CCTV deploy)
 - ดูรายละเอียดใน memory: `feedback_uvicorn_windows_reload.md`
 
 **งานถัดไป (Sprint 13):**

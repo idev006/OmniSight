@@ -22,6 +22,12 @@ backend/.env
 # Storage / uploaded files
 storage/
 
+# Production bind-mount data directory
+data/
+
+# Backup archives
+backups/
+
 # ML models (large binary files — download separately)
 models/
 

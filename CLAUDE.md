@@ -28,23 +28,24 @@
 
 **Tech Stack:**
 - Backend: FastAPI (Python 3.12) + SQLAlchemy async + Alembic
-- AI: InsightFace buffalo_l (ONNX) — face detection + embedding
+- AI: InsightFace buffalo_l (ONNX) + MiniFASNet anti-spoofing (optional)
 - Vector DB: Qdrant (HNSW + SQ8)
-- Cache: Redis (station filter, attendance cooldown)
+- Cache: Redis (station filter, attendance cooldown, settings)
 - SQL DB: PostgreSQL 16
 - Frontend: Vue 3 + Vite + Tailwind CSS + DaisyUI
 - Services: Docker (Postgres 5432, Qdrant 6333, Redis 6379)
+- Production: nginx SSL reverse proxy, docker-compose.prod.yml
 
 ---
 
 ## Environment Setup
 
 ```powershell
-# Start backend
+# Start backend (dev)
 cd F:\programming\python\OmniSight
-.\start-backend.bat       # uvicorn at http://localhost:8000
+.\start-dev.bat           # kills old python, then uvicorn at http://localhost:8000
 
-# Start frontend
+# Start frontend (dev)
 .\start-frontend.bat      # vite at http://localhost:5173
 
 # Run migration
@@ -59,6 +60,15 @@ cd F:\programming\python\OmniSight
 # Default login
 username: admin
 password: admin
+
+# Production deploy
+sh nginx/generate_self_signed_cert.sh
+cp .env.prod.example .env.prod    # fill in real passwords
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+
+# Backup
+bash scripts/backup.sh            # Linux/WSL
+powershell -File scripts\backup.ps1  # Windows
 ```
 
 ---
@@ -68,20 +78,20 @@ password: admin
 ### Phase Progress
 ```
 Phase 1 — Foundation     ████████████████████ 100%  ✅ DONE
-Phase 2 — AI Core        ████████████░░░░░░░░  60%  🔄 IN PROGRESS
-Phase 3 — HR Features    ████████████████░░░░  80%  🔄 IN PROGRESS
+Phase 2 — AI Core        █████████████████░░░  85%  🔄 IN PROGRESS
+Phase 3 — HR Features    ████████████████████ 100%  ✅ DONE
 Phase 4 — Multi-Camera   ████████████████████ 100%  ✅ DONE
-Phase 5 — Production     ░░░░░░░░░░░░░░░░░░░░   0%  ⏳ PENDING
+Phase 5 — Production     ████████░░░░░░░░░░░░  40%  🔄 IN PROGRESS
 ```
 
-### Data ใน DB (ณ Sprint 11)
+### Data ใน DB (ณ Sprint 13)
 | รายการ | ค่า |
 |--------|-----|
 | Employee | emp1 (6/6 enrolled ✅), emp2 (0/6) |
 | Station | sta1 (ccd829a0), sta2 (07464848) |
 | Users | admin (ADMIN), hr1 (HR), operator1 (OPERATOR) |
-| Attendance logs | 2+ records (snapshot_path ยังว่าง — เพิ่งแก้ bug) |
-| Qdrant vectors | 7 (6 จริง + 1 orphaned, BUG-002) |
+| Attendance logs | 27+ records, id≥27 มี snapshot_path |
+| Qdrant vectors | 6 (0 orphaned — BUG-002 ✅ fixed) |
 
 ---
 
@@ -113,74 +123,42 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 
 ---
 
-## Sprint 11 — สิ่งที่ทำเสร็จแล้ว (session นี้)
+## Anti-Spoofing Architecture (Sprint 13 — ✅ DONE)
 
-### ✅ Face Snapshot Evidence (Attendance)
-**ปัญหา:** หน้า Attendance ไม่แสดงใบหน้าหลักฐานการลงเวลา  
-**Root cause:** `websocket.py` ใช้ตัวแปร `img` ที่ไม่มีอยู่จริง (ควรเป็น `frame`) → NameError ถูก except กลืนเงียบ → crop ไม่เคยสำเร็จ  
-**แก้ไขใน:** `backend/app/api/websocket.py` lines 239, 246 — เปลี่ยน `img` → `frame`
-
-**ไฟล์ที่เปลี่ยนในหัวข้อนี้:**
-- `backend/app/api/websocket.py` — fix `img` → `frame`, crop error log debug→warning
-- `backend/app/services/attendance_service.py` — เพิ่ม `face_crop_jpg` param, save snapshot, absolute path
-- `backend/app/models/orm.py` — เพิ่ม `snapshot_path` column
-- `backend/app/api/attendance.py` — เพิ่ม `snapshot_url` field + `/attendance/{id}/snapshot` endpoint
-- `backend/alembic/versions/c3f8a92b1d74_...py` — migration เพิ่ม snapshot_path column ✅ ran
-- `frontend/src/views/AttendanceView.vue` — SnapshotImg component, thumbnail, modal
-
-### ✅ Enrolled Face Viewing (Enrollment Page)
-**ปัญหา:** Admin ดูรูปใบหน้าที่ enroll ไว้ไม่ได้  
-**แก้ไขใน:**
-- `backend/app/api/enrollment.py` — เพิ่ม `image_url` ใน response + endpoint `/employees/{id}/enroll/{index}/image`
-- `backend/app/models/schemas.py` — เพิ่ม `image_url: Optional[str]` ใน FaceTemplateOut
-- `frontend/src/views/EnrollmentView.vue` — load existing slots with auth-header image fetch
-
-### ✅ Re-enrollment IntegrityError Fix
-**Root cause:** SQLAlchemy ไม่ flush DELETE ก่อน INSERT  
-**แก้ไขใน:** `backend/app/api/enrollment.py` — เพิ่ม `await db.flush()` หลัง `await db.delete(existing)`
-
-### ✅ Mobile Scan HUD — Dual Overlay Fix
-**ปัญหา:** แสดงทั้ง unknown (แดง) และ match (เขียว) พร้อมกัน  
-**แก้ไขใน:** `frontend/src/views/MobileScanView.vue`
-- Single `<Transition mode="out-in">` + `:key="overlay.type"`
-- `_transitioning` flag + `_pendingFace` queue
-- `UNKNOWN_HOLD_FRAMES = 2` debounce — ไม่แสดง unknown ทันที รอ 2 frames
-
-### ✅ Camera Selection (Multi-camera Support)
-**ปัญหา:** ผู้ใช้เลือกกล้องไม่ได้ทั้ง ScanView และ MobileScanView  
-**แก้ไขใน:**
-- `frontend/src/views/ScanView.vue` — dropdown เมื่อมี >1 กล้อง, watch + restart
-- `frontend/src/views/MobileScanView.vue`:
-  - 3+ กล้อง → dropdown; 2 กล้อง → flip button; 0-1 → hidden
-  - สลับกล้องระหว่าง streaming ได้ (WS ไม่ reconnect)
-  - `watch(selectedCameraId)` → `_switchCamera()` — stop media only, keep WS
-  - `switchingCamera` loading state ป้องกัน double-tap
-
-### ✅ Bounding Box Alignment Fix
-**ปัญหา:** กรอบสีเขียวไม่อยู่ตรงใบหน้า  
-**แก้ไขใน:**
-- `MobileScanView.vue` — `_sendFrame` reproduce CSS object-cover crop; `drawBBoxes` scale from sent frame (640×SEND_H)
-- `ScanView.vue` — calculate letterbox/pillarbox offset; scale from 640×480
+| Component | รายละเอียด |
+|-----------|-----------|
+| Model | MiniFASNet V2 (`2.7_80x80_MiniFASNetV2.onnx`, 1.7MB) |
+| Path | `models/anti_spoof/2.7_80x80_MiniFASNetV2.onnx` |
+| Input | `(batch, 3, 80, 80)` NCHW float32 ImageNet-normalized |
+| Output | `(batch, 3)` logits → `softmax()[1]` = liveness score |
+| Degradation | ถ้าไม่มีไฟล์ → `available=False` → ทุก check ผ่าน (True, 1.0) |
+| Enrollment gate | HTTP 422 ถ้า liveness < threshold |
+| Scan gate | `status="spoof"` FaceResult — ไม่ log attendance |
+| Enable | ตั้ง `anti_spoof_enabled=1` ใน Settings UI |
 
 ---
 
-## ⚠️ สิ่งที่ต้อง Verify ใน Session ถัดไป
+## Production Architecture (Sprint 13 — ✅ DONE)
 
-1. **Restart backend** แล้ว scan ใหม่ → ดู log `Snapshot saved:` → ถ้าขึ้น = แก้แล้ว
-2. หลัง scan → หน้า Attendance ต้องแสดง thumbnail ใบหน้า (คลิกขยายได้)
-3. ถ้า log ขึ้น `WARNING Face crop failed:` ให้ส่ง error มาดู
+| Component | รายละเอียด |
+|-----------|-----------|
+| `docker-compose.prod.yml` | postgres + qdrant + redis + backend + nginx |
+| Storage | `./data/storage` bind mount (host-accessible for backup) |
+| InsightFace models | `insightface_models` named volume (survives `docker build --no-cache`) |
+| SSL | nginx/ssl/ (generate with `sh nginx/generate_self_signed_cert.sh`) |
+| Env | `.env.prod` from `.env.prod.example` |
+| Backup | `scripts/backup.sh` / `scripts/backup.ps1` — 7-day rotation |
+| Restore | `scripts/restore.sh <backup-dir>` |
 
 ---
 
-## งานที่ต้องทำถัดไป (Sprint 12)
+## งานที่ต้องทำถัดไป (Sprint 14)
 
 ### ลำดับความสำคัญ
-1. 🔴 **Verify snapshot fix** — restart backend + test scan → ดู thumbnail ที่หน้า Attendance
-2. 🟡 **BUG-002** — ลบ orphaned Qdrant vector (reconcile script)
-3. 🟡 **Anti-spoofing MiniFASNet** — Phase 2 AI feature
-4. 🟡 **Face quality gate** — reject blur/dark during enrollment
-5. 🟢 **rtsp_agent Dockerfile** — สำหรับ production deploy
-6. 🟢 **GitHub push** — Sprint 8+9+10+11 (ต้องขออนุญาต user)
+1. 🟢 **GitHub push** — Sprint 9–13 (ต้องขออนุญาต user)
+2. 🟡 **Logging & monitoring** — structured JSON logs + file rotation
+3. 🟢 **Performance test** — 1000 employees, 10+ cameras
+4. 🟢 **rtsp_agent Dockerfile** — สำหรับ production CCTV deploy
 
 ---
 
@@ -188,7 +166,7 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 
 | ID | ปัญหา | Severity | สถานะ |
 |----|-------|----------|-------|
-| BUG-002 | Orphaned Qdrant vector (7 แทน 6) | Low | Open |
+| (none) | — | — | — |
 
 ---
 
@@ -197,12 +175,10 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 | ไฟล์ | เนื้อหา |
 |------|---------|
 | `doc/project_management/PROJECT_STATUS.md` | Dashboard + phase tracking |
-| `doc/project_management/SPRINT_LOG.md` | Sprint history + context |
+| `doc/project_management/SPRINT_LOG.md` | Sprint 1–13 history + context |
 | `doc/project_management/DECISIONS_LOG.md` | ADR-001 ถึง ADR-011 |
 | `doc/cluade_version/chapter_17_multi_camera_pilot_console.md` | Multi-camera & Pilot Console design |
 | `doc/cluade_version/chapter_22_auth_authorization.md` | Auth/Authz — seq diagrams + API matrix |
-| `doc/cluade_version/chapter_23_mobile_scan_hud.md` | Mobile Scan HUD — persona, audio, wake lock, state machine |
-| `doc/cluade_version/chapter_24_bugs_and_solutions.md` | Bugs BUG-005 ถึง BUG-010 — Docker, Vite proxy, mobile camera, HTTPS |
 
 ---
 
@@ -210,9 +186,9 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 
 - Repository: https://github.com/idev006/OmniSight
 - Branch: master
-- Latest commit: `6bb79e9` — multi-camera architecture design
-- Sprint 8+9+10+11 changes: **ยังไม่ได้ push** (รอ approval)
-- .gitignore excludes: `my_env/`, `.env`, `storage/`, `frontend/node_modules/`
+- Latest push: Sprint 8 (`652c445`)
+- Sprint 9–13 changes: **ยังไม่ได้ push** (รอ approval)
+- .gitignore excludes: `my_env/`, `.env`, `storage/`, `frontend/node_modules/`, `models/`, `data/`, `backups/`
 
 > **⚠️ ห้าม push GitHub โดยไม่ขออนุญาต user ก่อนทุกครั้ง**
 
@@ -234,24 +210,4 @@ Phase 5 — Production     ░░░░░░░░░░░░░░░░░�
 
 ---
 
-## Snapshot Evidence — Architecture
-
-```
-Scan frame (JPEG) → websocket.py
-  → cv2.imdecode → frame (numpy)
-  → face detected → bbox (x1,y1,x2,y2)
-  → crop frame[y1-pad:y2+pad, x1-pad:x2+pad]   ← ใช้ frame ไม่ใช่ img!
-  → cv2.imencode('.jpg') → face_crop_jpg (bytes)
-  → log_attendance(face_crop_jpg=...)
-      → save to storage/faces/snapshots/YYYY-MM-DD/{log_id}.jpg
-      → log.snapshot_path = absolute path
-
-GET /api/v1/attendance/{id}/snapshot  (require_hr)
-  → FileResponse(log.snapshot_path)
-
-Frontend AttendanceView.vue
-  → SnapshotImg component: api.get(url, {responseType:'blob'})
-    → URL.createObjectURL() → <img src>
-```
-
-*อัพเดทล่าสุด: 2026-05-18 (Sprint 11 — Face snapshot fix, Camera selection, BBox alignment, Dual overlay fix)*
+*อัพเดทล่าสุด: 2026-05-18 (Sprint 13 — Production Docker stack, backup system, anti-spoofing, late/absent detection)*

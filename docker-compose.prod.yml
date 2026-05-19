@@ -22,6 +22,11 @@ services:
     restart: unless-stopped
     volumes:
       - qdrantdata:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -45,15 +50,16 @@ services:
       SECRET_KEY:    ${SECRET_KEY:?SECRET_KEY is required}
       STORAGE_PATH:  /app/storage/faces
     volumes:
-      - storage:/app/storage
-      - ./models:/app/models:ro      # anti-spoof model (read-only)
+      - ./data/storage:/app/storage
+      - ./models:/app/models:ro
+      - insightface_models:/root/.insightface
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
       qdrant:
-        condition: service_started
+        condition: service_healthy
 
   # ── Frontend + Reverse Proxy (nginx + SSL) ───────────────────────────────────
 
@@ -73,4 +79,4 @@ services:
 volumes:
   pgdata:
   qdrantdata:
-  storage:
+  insightface_models:
