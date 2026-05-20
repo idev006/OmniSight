@@ -35,9 +35,10 @@ async def _seed_admin():
         ("unknown_face_alert",    "5",    "int",  "Trigger alert after N unknown faces detected within 5 minutes"),
         ("late_threshold_minutes","15",   "int",  "Minutes after shift start_time before marking employee as LATE"),
         # Performance
-        ("max_fps_per_camera", "2",     "int",    "Max frames per second the backend processes per camera"),
-        ("inference_workers",  "2",     "int",    "Number of parallel ONNX inference workers (restart required)"),
-        ("face_detect_size",   "320",   "int",    "Input resolution for face detector: 320 (fast, recommended) or 640 (accurate)"),
+        ("max_fps_per_camera",     "2",   "int",    "Max frames per second the backend processes per camera"),
+        ("inference_workers",      "4",   "int",    "Number of parallel ONNX inference workers (restart required)"),
+        ("recognition_cache_ttl",  "30",  "int",    "Seconds to reuse Qdrant result per tracked face before re-identifying (5–300). Higher = fewer DB calls when people stand still."),
+        ("face_detect_size",       "320", "int",    "Input resolution for face detector: 320 (fast, recommended) or 640 (accurate)"),
         # Anti-spoofing
         ("anti_spoof_enabled",   "0",   "int",    "Enable MiniFASNet anti-spoofing (1=on, 0=off). Requires model download."),
         ("anti_spoof_threshold", "0.6", "float",  "Minimum liveness score to accept as real face (0.0–1.0)"),
