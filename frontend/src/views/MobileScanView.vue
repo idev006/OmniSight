@@ -42,20 +42,42 @@
         </div>
       </div>
 
-      <!-- ── HUD: Result overlay (MATCH / UNKNOWN) ────────────────────────
-           Single <Transition> with mode="out-in" + :key ensures the old card
-           fully leaves before the new one enters — prevents both overlays
-           being visible simultaneously during the transition animation.
+      <!-- ── HUD: Recent results strip ─────────────────────────────────────
+           แสดงทุกใบหน้าที่ scan ได้ใน 10 วินาทีล่าสุด เรียงซ้าย→ขวา (ใหม่สุดซ้าย)
+           chip สีเขียว = logged ✅ | เทา = already logged 🔁 | แดง = unknown ⚠️
+      ──────────────────────────────────────────────────────────────────── -->
+      <div v-if="recentResults.length > 0"
+        class="absolute bottom-2 left-2 right-2 flex gap-1.5 flex-wrap justify-end pointer-events-none"
+        style="z-index:10"
+      >
+        <TransitionGroup name="chip">
+          <div v-for="r in recentResults" :key="r.animKey"
+            class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm"
+            :class="r.status === 'unknown'
+              ? 'bg-red-600/80 text-white'
+              : r.attendance_logged
+                ? 'bg-green-600/80 text-white'
+                : 'bg-black/50 text-white/60'"
+          >
+            <span>{{ r.status === 'unknown' ? '⚠️' : r.attendance_logged ? '✅' : '🔁' }}</span>
+            <span class="max-w-[110px] truncate">{{ r.full_name || 'Unknown' }}</span>
+          </div>
+        </TransitionGroup>
+      </div>
+
+      <!-- ── HUD: Center overlay (priority: unknown > new check-in) ──────────
+           :key="overlay.animKey" → เพิ่ม counter ทุกครั้งที่เปลี่ยนคน
+           ทำให้ Vue animate ใหม่ แม้ type เดิม (match→match คนต่างกัน)
       ──────────────────────────────────────────────────────────────────── -->
       <Transition name="result-pop" mode="out-in"
         @before-leave="() => { _transitioning = true }"
         @after-leave="() => { _transitioning = false; if (_pendingFace) { _applyOverlay(_pendingFace); _pendingFace = null } }"
       >
         <div v-if="overlay.visible"
-          :key="overlay.type"
+          :key="overlay.animKey"
           class="absolute inset-x-4 rounded-2xl px-6 py-5 flex items-center gap-4"
           :style="{
-            top: '50%',
+            top: '45%',
             transform: 'translateY(-50%)',
             backdropFilter: 'blur(8px)',
             background: overlay.type === 'match'
@@ -240,6 +262,7 @@ let _geo = null  // { sx, sy, sw, sh, SEND_W, SEND_H, displayW, displayH }
 // ── Overlay state (HUD result card) ──────────────────────────────────────────
 const overlay = ref({
   visible:          false,
+  animKey:          0,         // เพิ่มทุกครั้งที่แสดงใหม่ → Vue animate แม้ type เดิม
   type:             'match',   // 'match' | 'unknown'
   full_name:        '',
   dept_name:        '',
@@ -249,16 +272,48 @@ const overlay = ref({
 })
 let _overlayTimer = null
 
+// ── Recent results strip ──────────────────────────────────────────────────────
+// แสดงทุกใบหน้าที่ scan ได้ล่าสุด (max 6) เรียง newest-first
+// auto-expire หลัง 10 วินาที
+const recentResults   = ref([])
+let _recentAnimKey    = 0      // monotonic key สำหรับ TransitionGroup
+let _recentCleanTimer = null
+
+function _addRecentResult(face) {
+  // เพิ่ม / อัปเดต entry ของ tracking_id นี้
+  const idx = recentResults.value.findIndex(r => r.tracking_id === face.tracking_id)
+  const entry = {
+    animKey:          ++_recentAnimKey,
+    tracking_id:      face.tracking_id,
+    status:           face.status,
+    full_name:        face.full_name || '',
+    attendance_logged: face.attendance_logged,
+    ts:               Date.now(),
+  }
+  if (idx >= 0) {
+    recentResults.value[idx] = entry   // อัปเดต (เช่น unknown → match)
+  } else {
+    recentResults.value.unshift(entry) // เพิ่มด้านซ้าย (ใหม่สุด)
+    if (recentResults.value.length > 6) recentResults.value.pop()
+  }
+}
+
+function _cleanRecentResults() {
+  const cutoff = Date.now() - 10_000
+  recentResults.value = recentResults.value.filter(r => r.ts >= cutoff)
+}
+
 // ── Per-tracking_id cooldown (prevent beep spam) ──────────────────────────────
 // Map<tracking_id, timestamp_ms> — cooldown 3 s per face
 const _audioCooldown = new Map()
 const AUDIO_COOLDOWN_MS = 3000
 
-// ── Unknown debounce ──────────────────────────────────────────────────────────
-// ไม่แสดง "ไม่รู้จัก" ทันที — รอ N frames ติดกันก่อน
-// เหตุผล: frame แรกมักยังจำแนกไม่ได้ ถ้า frame ถัดไป match ได้ → ไม่ควรแสดง red ให้สับสน
+// ── Unknown debounce — per face (Map) ────────────────────────────────────────
+// ไม่แสดง "ไม่รู้จัก" ทันที — รอ N frames ติดกันก่อน per tracking_id
+// เหตุผล: frame แรกมักยังจำแนกไม่ได้ ถ้า frame ถัดไป match ได้ → ไม่ควรแสดง red
 // N=2 ที่ 2fps = รอ ~1s ก่อน alert unknown จริง
-let _unknownFrames = 0
+// FIX: ใช้ Map แทน global counter — แยก per-face ไม่ให้คนอื่น reset ของกัน
+const _unknownFrames = new Map()  // Map<tracking_id, frameCount>
 const UNKNOWN_HOLD_FRAMES = 2
 
 // ── WS status ─────────────────────────────────────────────────────────────────
@@ -393,7 +448,9 @@ function _applyOverlay(face) {
 
   if (face.status === 'match') {
     overlay.value = {
-      visible: true, type: 'match',
+      visible:          true,
+      animKey:          (overlay.value.animKey || 0) + 1,  // force re-animate even same type
+      type:             'match',
       full_name:         face.full_name || 'Unknown',
       dept_name:         face.dept_name || '',
       emp_code:          face.emp_code  || '',
@@ -404,7 +461,9 @@ function _applyOverlay(face) {
     _overlayTimer = setTimeout(() => { overlay.value.visible = false }, 2500)
   } else {
     overlay.value = {
-      visible: true, type: 'unknown',
+      visible:          true,
+      animKey:          (overlay.value.animKey || 0) + 1,
+      type:             'unknown',
       full_name: '', dept_name: '', emp_code: '', confidence: 0, attendance_logged: false,
     }
     _overlayTimer = setTimeout(() => { overlay.value.visible = false }, 4000)
@@ -548,30 +607,46 @@ function _connectWS(stationId) {
       drawBBoxes(faces)
 
       if (faces.length === 0) {
-        // ไม่มีใบหน้าในเฟรม — reset unknown counter + clear unknown overlay
-        _unknownFrames = 0
+        // ไม่มีใบหน้าในเฟรม — clear unknown counters + unknown overlay
+        _unknownFrames.clear()
         if (overlay.value.type === 'unknown') _clearOverlay()
         return
       }
 
-      // แยก match / unknown
-      const matchFace   = faces.find(f => f.status === 'match')
-      const unknownFace = faces.find(f => f.status === 'unknown')
+      // ── แยกกลุ่ม ──────────────────────────────────────────────────────────
+      const unknownFaces = faces.filter(f => f.status === 'unknown')
+      const newCheckIns  = faces.filter(f => f.status === 'match' && f.attendance_logged)
+      const repeatMatch  = faces.filter(f => f.status === 'match' && !f.attendance_logged)
 
-      if (matchFace) {
-        // Match → reset unknown counter, แสดงทันที
-        _unknownFrames = 0
-        faces.forEach(face => _handleAudioFeedback(face))
-        _showOverlay(matchFace)
-      } else if (unknownFace) {
-        // Unknown → นับ frame ติดกัน ถึง threshold ค่อยแสดง
-        _unknownFrames++
-        if (_unknownFrames >= UNKNOWN_HOLD_FRAMES) {
-          faces.forEach(face => _handleAudioFeedback(face))
-          _showOverlay(unknownFace)
-        }
-        // ยังไม่ถึง threshold → วาด bbox อย่างเดียว ไม่แสดง overlay
+      // ── Audio & Recent strip — ทำทุกใบหน้า ─────────────────────────────
+      faces.forEach(face => {
+        _handleAudioFeedback(face)
+        _addRecentResult(face)
+      })
+
+      // ── Unknown debounce — per tracking_id (FIX Bug 4) ─────────────────
+      // นับ frame ที่ unknown ต่อเนื่องต่อคน — reset ทันทีถ้า match แล้ว
+      for (const mf of [...newCheckIns, ...repeatMatch]) {
+        _unknownFrames.delete(mf.tracking_id)  // match แล้ว → clear counter
       }
+      let confirmedUnknown = null
+      for (const uf of unknownFaces) {
+        const cnt = (_unknownFrames.get(uf.tracking_id) || 0) + 1
+        _unknownFrames.set(uf.tracking_id, cnt)
+        if (cnt >= UNKNOWN_HOLD_FRAMES && !confirmedUnknown) {
+          confirmedUnknown = uf  // เอาคนแรกที่ผ่าน threshold
+        }
+      }
+
+      // ── Center overlay priority: unknown > new check-in > ไม่แสดง ──────
+      // FIX Bug 5: unknown ต้องชนะ match เสมอ (security)
+      if (confirmedUnknown) {
+        _showOverlay(confirmedUnknown)
+      } else if (newCheckIns.length > 0) {
+        // แสดงคนแรกที่ logged จริง (ใหม่วันนี้) — คนอื่นอยู่ใน strip แล้ว
+        _showOverlay(newCheckIns[0])
+      }
+      // repeatMatch เท่านั้น → ไม่แสดง overlay (audio beep เบาๆ พอ, strip แสดงอยู่)
 
     } catch { /* ignore malformed */ }
   }
@@ -707,7 +782,8 @@ async function startStream() {
     paused.value     = false
     frameCount.value = 0
     _startFrameLoop(2)
-    _fpsTimer = setInterval(() => { localFps.value = _frameCounter; _frameCounter = 0 }, 1000)
+    _fpsTimer         = setInterval(() => { localFps.value = _frameCounter; _frameCounter = 0 }, 1000)
+    _recentCleanTimer = setInterval(_cleanRecentResults, 2000)  // ล้าง chip เก่าทุก 2s
   } catch (e) {
     toast.error('Camera error: ' + (e.message || e))
   } finally {
@@ -722,7 +798,9 @@ function stopStream() {
   _clearOverlay()
   _stopFrameLoop()
   _releaseWakeLock()
-  if (_fpsTimer)    { clearInterval(_fpsTimer); _fpsTimer = null }
+  if (_fpsTimer)         { clearInterval(_fpsTimer);         _fpsTimer = null }
+  if (_recentCleanTimer) { clearInterval(_recentCleanTimer); _recentCleanTimer = null }
+  recentResults.value = []
   if (ws)           { ws.close(); ws = null }
   if (mediaStream)  { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
   if (videoEl.value) videoEl.value.srcObject = null
@@ -733,7 +811,7 @@ function stopStream() {
   wsState.value  = 'disconnected'
   localFps.value = 0
   _frameCounter  = 0
-  _unknownFrames = 0
+  _unknownFrames.clear()
   _audioCooldown.clear()
 }
 </script>
@@ -752,4 +830,11 @@ function stopStream() {
 /* iOS safe area */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
 .pt-safe { padding-top:    env(safe-area-inset-top,    0px); }
+
+/* Recent result chips */
+.chip-enter-active { transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+.chip-leave-active { transition: all 0.2s ease-in; }
+.chip-enter-from   { opacity: 0; transform: scale(0.7) translateY(6px); }
+.chip-leave-to     { opacity: 0; transform: scale(0.8); }
+.chip-move         { transition: transform 0.25s ease; }
 </style>
