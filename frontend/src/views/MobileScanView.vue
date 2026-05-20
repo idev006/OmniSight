@@ -280,7 +280,8 @@ const FACE_PERSIST_MS = 7000       // face stays in panel 7s after last seen
 
 function _updateFacePanel(faces) {
   const now = Date.now()
-  for (const face of faces) {
+  // Unknown faces = audio/bbox only — not shown in panel (ลด visual clutter)
+  for (const face of faces.filter(f => f.status !== 'unknown')) {
     const existing = _faceMap.get(face.tracking_id)
     _faceMap.set(face.tracking_id, {
       ...face,
