@@ -182,6 +182,7 @@ from app.api import (
     auth, departments, shifts, employees,
     stations, enrollment, attendance,
     websocket, console_ws, users, cameras, settings as settings_api,
+    system,
 )
 
 app.include_router(auth.router,         prefix="/api/v1/auth",        tags=["auth"])
@@ -194,5 +195,6 @@ app.include_router(cameras.router,      prefix="/api/v1/cameras",     tags=["cam
 app.include_router(settings_api.router, prefix="/api/v1/settings",    tags=["settings"])
 app.include_router(enrollment.router,   prefix="/api/v1/employees",   tags=["enrollment"])
 app.include_router(attendance.router,   prefix="/api/v1/attendance",  tags=["attendance"])
+app.include_router(system.router,       prefix="/api/v1/system",      tags=["system"])
 app.include_router(websocket.router,    prefix="/api/v1/ws",          tags=["websocket"])
 app.include_router(console_ws.router,   prefix="/api/v1/ws",          tags=["console"])

@@ -114,6 +114,12 @@ const routes = [
         component: () => import('@/views/SettingsView.vue'),
         meta: { title: 'System Settings', roles: ['ADMIN'] },
       },
+      {
+        path: 'system',
+        name: 'SystemInfo',
+        component: () => import('@/views/SystemView.vue'),
+        meta: { title: 'System Info', roles: ['ADMIN'] },
+      },
     ],
   },
 ]
