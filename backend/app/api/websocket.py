@@ -352,31 +352,31 @@ async def scan_ws(
                     else:
                         unknowns.append((tid, bbox))
 
-                # ── Step 6: DB lookup + crops in parallel ─────────────────────
+                # ── Step 6: DB lookup (1 query, IN clause) + crops in parallel ──
+                # FIX: ใช้ WHERE id IN (...) แทน N concurrent db.execute()
+                # SQLAlchemy AsyncSession ไม่รองรับ concurrent coroutines บน session เดียว
                 if matches:
-                    emp_rows, crops = await asyncio.gather(
-                        asyncio.gather(*[
-                            db.execute(
-                                select(Employee, Department.name.label("dept_name"))
-                                .join(Department, Department.id == Employee.dept_id,
-                                      isouter=True)
-                                .where(Employee.id == emp_id)
-                            )
-                            for _, _, emp_id, _ in matches
-                        ]),
-                        asyncio.gather(*[
-                            loop.run_in_executor(
-                                _executor, partial(crop_face_jpeg, frame, bbox)
-                            )
-                            for _, bbox, _, _ in matches
-                        ]),
+                    emp_ids_ordered = [emp_id for _, _, emp_id, _ in matches]
+                    emp_result = await db.execute(
+                        select(Employee, Department.name.label("dept_name"))
+                        .join(Department, Department.id == Employee.dept_id, isouter=True)
+                        .where(Employee.id.in_(emp_ids_ordered))
                     )
+                    # สร้าง lookup dict เพื่อ map emp_id → (Employee, dept_name)
+                    emp_map = {row[0].id: row for row in emp_result.all()}
+
+                    crops = await asyncio.gather(*[
+                        loop.run_in_executor(
+                            _executor, partial(crop_face_jpeg, frame, bbox)
+                        )
+                        for _, bbox, _, _ in matches
+                    ])
                 else:
-                    emp_rows, crops = [], []
+                    emp_map, crops = {}, []
 
                 # ── Step 7: attendance log + broadcast ────────────────────────
                 for i, (tid, bbox, emp_id, confidence) in enumerate(matches):
-                    row       = emp_rows[i].first() if emp_rows else None
+                    row       = emp_map.get(emp_id)
                     full_name = row[0].full_name or "" if row else ""
                     emp_code  = row[0].emp_code        if row else None
                     dept_name = row[1]                 if row else None
