@@ -1,6 +1,7 @@
 # OmniSight — AI Session Handover
 
-> อ่านไฟล์นี้ก่อนทุกครั้งที่เริ่ม session ใหม่
+> อ่านไฟล์นี้ก่อนทุกครั้งที่เริ่ม session ใหม่  
+> 📖 หลักการทำงาน: `memory/PHILOSOPHY.md`
 
 ---
 
