@@ -302,6 +302,10 @@ async def scan_ws(
                     is_live, score = spoof_checks[i]
                     if not is_live:
                         FACES_SPOOF.inc()
+                        logger.warning(
+                            "Anti-spoof REJECTED: camera=%s score=%.3f threshold=%.3f",
+                            camera_id, score, spoof_threshold,
+                        )
                         r = FaceResult(
                             tracking_id=tid, status="spoof", confidence=score,
                             bbox=BBox(x=bbox[0], y=bbox[1],

@@ -72,7 +72,7 @@ async def _check_absences(redis) -> None:
         # Build set of employee_ids who checked in today
         checked_in = await db.execute(
             select(AttendanceLog.employee_id)
-            .where(cast(AttendanceLog.check_in_time, Date) == today)
+            .where(cast(AttendanceLog.timestamp, Date) == today)
             .distinct()
         )
         checked_ids = {row[0] for row in checked_in}
