@@ -272,6 +272,7 @@ const META = {
   late_threshold_minutes:    { label: 'Late Threshold',         hint: 'min after shift start', min: 0, max: 120 },
   max_fps_per_camera:        { label: 'Max FPS per Camera',     hint: 'fps',           min: 1,    max: 30   },
   inference_workers:         { label: 'Inference Workers',      hint: 'threads',       min: 1,    max: 16   },
+  recognition_cache_ttl:     { label: 'Recognition Cache TTL',  hint: 'sec — reuse result per tracked face (5–300)', min: 5, max: 300 },
   face_detect_size:          { label: 'Face Detect Input Size', hint: 'px',            min: 160,  max: 1280 },
   discord_webhook_url:       { label: 'Discord Webhook URL',    hint: 'https://discord.com/api/webhooks/...' },
   telegram_bot_token:        { label: 'Telegram Bot Token',     hint: 'from @BotFather' },
@@ -294,7 +295,7 @@ const groups = [
   { id: 'security',      label: 'Security',          desc: 'Authentication and access token settings',              icon: '🔐', iconBg: 'bg-error/10 text-error',   keys: ['access_token_expire_hours'] },
   { id: 'face',          label: 'Face Recognition',  desc: 'Matching accuracy and enrollment quality thresholds',   icon: '👁️', iconBg: 'bg-primary/10 text-primary', keys: ['match_threshold', 'min_face_quality', 'anti_spoof_enabled', 'anti_spoof_threshold'] },
   { id: 'attendance',    label: 'Attendance',         desc: 'Cooldown period and alert triggers',                    icon: '📋', iconBg: 'bg-success/10 text-success', keys: ['cooldown_seconds', 'unknown_face_alert', 'late_threshold_minutes'] },
-  { id: 'performance',   label: 'Performance',        desc: 'Camera throughput and inference engine settings',       icon: '⚡', iconBg: 'bg-warning/10 text-warning', keys: ['max_fps_per_camera', 'inference_workers', 'face_detect_size'] },
+  { id: 'performance',   label: 'Performance',        desc: 'Camera throughput and inference engine settings',       icon: '⚡', iconBg: 'bg-warning/10 text-warning', keys: ['max_fps_per_camera', 'inference_workers', 'recognition_cache_ttl', 'face_detect_size'] },
   { id: 'notifications', label: 'Notifications',      desc: 'Real-time alerts via Discord, Telegram, Slack, Line, or Email', icon: '🔔', iconBg: 'bg-info/10 text-info', keys: ['discord_webhook_url', 'telegram_bot_token', 'telegram_chat_id', 'slack_webhook_url', 'line_notify_token', 'email_smtp_server', 'email_smtp_port', 'email_smtp_user', 'email_smtp_password', 'email_to_address', 'notify_on_checkin', 'notify_on_unknown', 'notify_on_spoof', 'notify_on_absent'] },
 ]
 
@@ -311,9 +312,10 @@ const DEFAULTS = {
   min_face_quality:   '0.6',
   cooldown_seconds:   '300',
   unknown_face_alert: '5',
-  max_fps_per_camera: '2',
-  inference_workers:  '2',
-  face_detect_size:   '640',
+  max_fps_per_camera:    '2',
+  inference_workers:     '4',
+  recognition_cache_ttl: '30',
+  face_detect_size:      '640',
 }
 
 // ── Type helpers ───────────────────────────────────────────────────────────
