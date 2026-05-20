@@ -69,6 +69,8 @@ test_websocket_scan.py
 # Logs
 *.log
 uvicorn*.log
+backend_out.txt
+backend_err.txt
 
 # Temp files
 tmp*.json
