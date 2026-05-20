@@ -1,6 +1,6 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-19 (Sprint 16 — Phase 2/3 completion: ONNX auto-detect, Dashboard KPI, Line/Email/Absent notifications)  
+> **อัปเดตล่าสุด:** 2026-05-19 (Sprint 18 — Anti-spoof debug, 10+ faces analysis, Mobile UI review, Worktree rule)  
 > **Project Manager / Lead Dev:** idev006  
 > **AI Pair:** Claude Sonnet 4.6  
 > **Repository:** https://github.com/idev006/OmniSight  

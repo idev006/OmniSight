@@ -1116,3 +1116,123 @@ Note: Latency is CPU-bound (no GPU). Error rate 0% is the primary SLO — passed
 ```
 
 **⚠️ GitHub push policy:** ต้องขออนุญาต user ก่อนทุกครั้ง — ห้าม push โดยไม่บอก
+
+---
+
+## Sprint 16 — Phase 2/3 Completion: ONNX Auto-Detect + Line/Email + Absent Alerts ✅ DONE
+**วันที่:** 2026-05-19  
+**เป้าหมาย:** ปิด Phase 2 และ Phase 3 ให้ครบ 100%
+
+### สิ่งที่ทำ
+
+| # | งาน | ผลลัพธ์ |
+|---|-----|--------|
+| S16.1 | `get_best_provider(override)` — CUDA→DirectML→ROCm→CPU auto-detect | ✅ |
+| S16.2 | `config.py` — `onnxruntime_provider="auto"` + `/health` exposes active provider | ✅ |
+| S16.3 | `notification_service.py` — Line Notify API + SMTP Email via `asyncio.to_thread` | ✅ |
+| S16.4 | `absent_alert_service.py` — background loop ทุก 5 นาที, Redis dedup per day | ✅ |
+| S16.5 | `main.py` — seed settings: line/email/notify_on_absent + start `absent_alert_loop` | ✅ |
+| S16.6 | `SettingsView.vue` — เพิ่ม Line Notify + Email (SMTP) fields ใน Notifications group | ✅ |
+| S16.7 | Phase 2 → **100%** ✅, Phase 3 → **100%** ✅ | ✅ |
+
+### Files Modified
+| File | การเปลี่ยนแปลง |
+|------|---------------|
+| `backend/app/core/face_engine.py` | `get_best_provider(override)` + `_PROVIDER_MAP` |
+| `backend/app/core/config.py` | `onnxruntime_provider="auto"` |
+| `backend/main.py` | `/health` response + seed 6 new settings + absent_alert_loop |
+| `backend/app/services/notification_service.py` | Line Notify + Email channels + `_fmt_absent()` |
+| `backend/app/services/absent_alert_service.py` | NEW — absent background service |
+| `frontend/src/views/SettingsView.vue` | Line Notify + Email SMTP fields |
+| `doc/project_management/PROJECT_STATUS.md` | Phase 2/3 → 100% |
+| `CLAUDE.md` | Phase bars updated |
+
+---
+
+## Sprint 17 — Smooth Multi-Face Overlay + 4× Faster CPU Inference ✅ DONE
+**วันที่:** 2026-05-19  
+**เป้าหมาย:** แก้ปัญหา bbox กระตุก + เพิ่มความเร็ว CPU inference
+
+### ปัญหาที่แก้
+
+**ก่อน (Sprint 16):** bbox overlay วาดใหม่ทุกครั้งที่ได้ผล WebSocket → ที่ 2fps bbox กระตุก/หาย 0.5s ทุกครั้ง  
+**หลัง (Sprint 17):** `requestAnimationFrame` render loop แยกจาก WebSocket → bbox smooth 60fps + fade animation
+
+### สิ่งที่ทำ
+
+| # | งาน | ผลลัพธ์ |
+|---|-----|--------|
+| S17.1 | `ScanView.vue` — `requestAnimationFrame` render loop แยกจาก WebSocket | ✅ bbox smooth 60fps |
+| S17.2 | Fade animation: `FADE_START_MS=1200` / `FADE_END_MS=2400` — boxes ไม่หายทันที | ✅ |
+| S17.3 | `config.py` — `face_detect_size` default: 640 → **320** (4× faster CPU: ~400ms → ~100ms) | ✅ |
+| S17.4 | `_drawBBoxes(faces, opacity)` — รับ opacity parameter + `ctx.globalAlpha` | ✅ |
+
+### Files Modified
+| File | การเปลี่ยนแปลง |
+|------|---------------|
+| `frontend/src/views/ScanView.vue` | `_rafHandle`, `_startRenderLoop()`, `_stopRenderLoop()`, fade logic |
+| `backend/app/core/config.py` | `face_detect_size` default 640 → 320 |
+
+---
+
+## Sprint 18 — Debug + Pipeline Analysis + Session Rules (2026-05-19)
+**วันที่:** 2026-05-19  
+**เป้าหมาย:** ตรวจสอบ anti-spoof, วิเคราะห์ 10+ faces, ทบทวน mobile UI
+
+### สิ่งที่ทำ
+
+#### 1. Anti-Spoof Debug
+**อาการ:** Anti-spoof ไม่ทำงานเมื่อทดสอบบนมือถือ  
+**สาเหตุ:** `anti_spoof_enabled` seeded ค่า default เป็น `"0"` (disabled by design)  
+**วิธีแก้:** เปิดใน Settings UI → `anti_spoof_enabled = 1` หรือ `redis-cli SET setting:anti_spoof_enabled 1`  
+**โค้ดที่เกี่ยวข้อง:**
+```python
+# websocket.py
+spoof_enabled = await get_anti_spoof_enabled()   # reads setting:anti_spoof_enabled
+              and anti_spoof_engine.available      # model file exists
+# ถ้า setting=0 → spoof_enabled=False → ทุก face ผ่านโดยไม่เช็ค
+```
+
+#### 2. 10+ Faces Pipeline Analysis
+**คำถาม:** ถ้า frame มี 10++ ใบหน้า ระบบรองรับได้ไหม?  
+**คำตอบ:** รองรับได้ดี — ทุกขั้นตอนหลักเป็น batch/parallel แล้ว
+
+| ขั้นตอน | วิธีการ | ประสิทธิภาพ |
+|---------|---------|------------|
+| Face detection | 1 ONNX pass (InsightFace) | ✅ O(1) call |
+| IoU tracker cache | instant lookup | ✅ ข้ามทุกอย่าง |
+| Anti-spoof | `asyncio.gather` parallel | ✅ |
+| Qdrant search | `search_batch()` 1 HTTP call | ✅ Sprint 15b |
+| DB lookup + crop | `asyncio.gather` concurrent | ✅ |
+| log_attendance | sequential (intentional) | ✅ cooldown ทำให้เร็ว |
+| `get_unknown_alert_threshold` | Settings cache 5s TTL | ✅ Sprint 15b |
+
+#### 3. MobileScanView Review
+**คำถาม:** Mobile display เหมาะสมไหม?  
+**คำตอบ:** เหมาะสมครับ — ออกแบบมาเป็น "Camera Agent" สำหรับ operator ถือที่ประตู
+
+| Feature | รายละเอียด |
+|---------|-----------|
+| Fullscreen | `fixed inset-0`, ไม่มี sidebar |
+| `object-cover` | เต็มจอ ไม่มี letterbox |
+| HUD card | กลางจอ `clamp(22px–32px)` อ่านง่ายแดด |
+| Audio + TTS | พูดชื่อ → ไม่ต้องมองจอ |
+| Vibration | สั่นเมื่อเจอ unknown |
+| Wake Lock | หน้าจอไม่ดับ |
+| iOS safe area | `env(safe-area-inset-*)` |
+| Unknown hold | รอ 2 frames ก่อนแสดง "ไม่รู้จัก" |
+
+#### 4. Lesson Learned — Worktree Rule
+**เหตุการณ์:** Session รันอยู่ใน worktree (Sprint 14 code) → แก้ไขโค้ดที่มีอยู่แล้วใน main repo (Sprint 15) → เสีย tokens โดยเปล่าประโยชน์  
+**กฎใหม่สำหรับ AI session:**
+1. **อ่านไฟล์จาก main repo เสมอ** — `F:\programming\python\OmniSight\...` ไม่ใช่ worktree path
+2. **เช็คก่อน implement** — Grep/Read main repo ก่อนทุกครั้ง
+3. **แก้ไฟล์ใน main repo โดยตรง** — ไม่แก้ใน worktree แล้วค่อย copy
+4. **ก่อน commit** — `git diff --stat` จาก `F:\programming\python\OmniSight` เสมอ
+
+### Files Modified
+| File | การเปลี่ยนแปลง |
+|------|---------------|
+| `doc/project_management/SPRINT_LOG.md` | เพิ่ม Sprint 16, 17, 18 entries |
+| `doc/project_management/PROJECT_STATUS.md` | อัปเดต header date |
+| `CLAUDE.md` | เพิ่ม Worktree Rule section |

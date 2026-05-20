@@ -169,7 +169,20 @@ Phase 5 — Production     █████████████████�
 
 ---
 
-## งานที่ต้องทำถัดไป (Sprint 17+)
+## ⚠️ Worktree Rule — ห้ามผิดทุก session
+
+Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) ซึ่งมีโค้ดเวอร์ชันเก่ากว่า main repo:
+
+| กฎ | รายละเอียด |
+|----|-----------|
+| **อ่านจาก main repo เสมอ** | ใช้ path `F:\programming\python\OmniSight\...` ไม่ใช่ worktree path |
+| **เช็คก่อน implement** | Grep/Read main repo ก่อนทุกครั้งเพื่อดูว่ามี feature นั้นอยู่แล้วหรือยัง |
+| **แก้ใน main repo โดยตรง** | ไม่แก้ใน worktree แล้วค่อย copy กลับ |
+| **ก่อน commit** | `git diff --stat` จาก `F:\programming\python\OmniSight` เสมอ |
+
+---
+
+## งานที่ต้องทำถัดไป (Sprint 19+)
 
 ### ลำดับความสำคัญ
 1. 🟢 **Grafana dashboard** — visualize Prometheus metrics จาก `GET /metrics`
@@ -191,7 +204,7 @@ Phase 5 — Production     █████████████████�
 | ไฟล์ | เนื้อหา |
 |------|---------|
 | `doc/project_management/PROJECT_STATUS.md` | Dashboard + phase tracking |
-| `doc/project_management/SPRINT_LOG.md` | Sprint 1–15d history + context |
+| `doc/project_management/SPRINT_LOG.md` | Sprint 1–18 history + context |
 | `doc/project_management/DECISIONS_LOG.md` | ADR-001 ถึง ADR-011 |
 | `doc/claude_version/chapter_17_multi_camera_pilot_console.md` | Multi-camera & Pilot Console design |
 | `doc/claude_version/chapter_22_auth_authorization.md` | Auth/Authz — seq diagrams + API matrix |
@@ -202,8 +215,8 @@ Phase 5 — Production     █████████████████�
 
 - Repository: https://github.com/idev006/OmniSight
 - Branch: master
-- Latest push: Sprint 8 (`652c445`)
-- Sprint 9–15d changes: **ยังไม่ได้ push** (รอ approval)
+- Latest push: Sprint 17 (`f813943`)
+- Sprint 18 docs: **ยังไม่ได้ push** (รอ approval)
 - .gitignore excludes: `my_env/`, `.env`, `storage/`, `frontend/node_modules/`, `models/`, `data/`, `backups/`
 
 > **⚠️ ห้าม push GitHub โดยไม่ขออนุญาต user ก่อนทุกครั้ง**
@@ -226,4 +239,4 @@ Phase 5 — Production     █████████████████�
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-19 (Sprint 16 — Phase 2/3 complete: ONNX auto-detect, Line/Email/absent notifications, Dashboard KPI)*
+*อัพเดทล่าสุด: 2026-05-19 (Sprint 18 — Anti-spoof debug, 10+ faces analysis, Mobile UI review, Worktree rule)*
