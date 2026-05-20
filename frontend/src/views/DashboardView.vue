@@ -116,7 +116,7 @@ async function load() {
   loading.value = true
   error.value   = ''
   try {
-    const res = await api.get('/attendance/kpi')
+    const res = await api.get('/api/v1/attendance/kpi')
     kpi.value = res.data
   } catch (e) {
     error.value = e?.response?.data?.detail || 'Failed to load KPI data'

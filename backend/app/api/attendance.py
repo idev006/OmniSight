@@ -77,9 +77,9 @@ async def attendance_kpi(
     today_logs = await db.execute(
         select(
             AttendanceLog.employee_id,
-            func.min(AttendanceLog.check_in_time).label("first_checkin"),
+            func.min(AttendanceLog.timestamp).label("first_checkin"),
         )
-        .where(cast(AttendanceLog.check_in_time, Date) == today)
+        .where(cast(AttendanceLog.timestamp, Date) == today)
         .group_by(AttendanceLog.employee_id)
     )
     today_checkins = {row.employee_id: row.first_checkin for row in today_logs}
@@ -118,7 +118,7 @@ async def attendance_kpi(
         d = today - timedelta(days=i)
         res = await db.execute(
             select(func.count(func.distinct(AttendanceLog.employee_id)))
-            .where(cast(AttendanceLog.check_in_time, Date) == d)
+            .where(cast(AttendanceLog.timestamp, Date) == d)
         )
         weekly.append({"date": d.isoformat(), "count": res.scalar() or 0})
 
@@ -127,7 +127,7 @@ async def attendance_kpi(
         select(Department.name, func.count(func.distinct(AttendanceLog.employee_id)).label("count"))
         .join(Employee, Employee.dept_id == Department.id)
         .join(AttendanceLog, AttendanceLog.employee_id == Employee.id)
-        .where(cast(AttendanceLog.check_in_time, Date) == today)
+        .where(cast(AttendanceLog.timestamp, Date) == today)
         .group_by(Department.name)
         .order_by(func.count(func.distinct(AttendanceLog.employee_id)).desc())
     )
