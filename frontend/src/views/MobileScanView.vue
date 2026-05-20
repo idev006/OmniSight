@@ -256,6 +256,16 @@ let _offscreenCtx    = null
 let _bboxCtx         = null
 let _geo             = null   // cached frame geometry
 
+// ── Backpressure + auto-clear ─────────────────────────────────────────────────
+// ปัญหา: frontend ส่ง frame ทุก 500ms แต่ backend ใช้เวลา 1-2s กับ 10 ใบหน้า
+// → frames สะสมในคิว → bbox/UI ค้างหลังกล้องหมุนไปแล้ว
+//
+// Fix 1 (Backpressure): ไม่ส่ง frame ใหม่จนกว่าจะได้ response ของ frame ก่อน
+// Fix 2 (Auto-clear):   ถ้า backend ตอบช้าเกิน FRAME_TIMEOUT_MS → ล้าง bbox ทันที
+let _waitingResponse   = false
+let _frameTimeoutTimer = null
+const FRAME_TIMEOUT_MS = 2500   // ms — ถ้าเกินนี้ถือว่า backend ยุ่งมาก → clear bbox
+
 // ── WS status ─────────────────────────────────────────────────────────────────
 const wsState = ref('disconnected')
 const wsStatusLabel = computed(() => ({
@@ -568,7 +578,10 @@ function _connectWS(stationId) {
         stopStream(); return
       }
 
-      // Recognition result
+      // Recognition result — unblock next frame (backpressure release)
+      _waitingResponse = false
+      if (_frameTimeoutTimer) { clearTimeout(_frameTimeoutTimer); _frameTimeoutTimer = null }
+
       const faces = data.faces || []
       drawBBoxes(faces)
       _updateFacePanel(faces)
@@ -652,6 +665,11 @@ function _sendFrame() {
   const video = videoEl.value
   if (!video || !video.videoWidth) return
 
+  // ── Backpressure gate ────────────────────────────────────────────────────
+  // ถ้ายังรอ response ของ frame ก่อนอยู่ → skip frame นี้
+  // ป้องกัน queue buildup เมื่อ backend ช้า (เช่น 10 faces ใช้เวลา 1-2s)
+  if (_waitingResponse) return
+
   if (!_geo
     || _geo.displayW !== video.clientWidth  || _geo.displayH !== video.clientHeight
     || _geo._videoW  !== video.videoWidth   || _geo._videoH  !== video.videoHeight) {
@@ -674,6 +692,18 @@ function _sendFrame() {
     ws.send(blob)
     frameCount.value++
     _frameCounter++
+
+    // Mark as waiting — block next frame until this one gets a response
+    _waitingResponse = true
+
+    // Safety timeout: ถ้า backend ไม่ตอบใน FRAME_TIMEOUT_MS
+    // → ปลดบล็อก + ล้าง bbox ที่ค้างอยู่
+    if (_frameTimeoutTimer) clearTimeout(_frameTimeoutTimer)
+    _frameTimeoutTimer = setTimeout(() => {
+      _waitingResponse   = false
+      _frameTimeoutTimer = null
+      _clearBBoxCanvas()
+    }, FRAME_TIMEOUT_MS)
   }, 'image/jpeg', 0.70)
 }
 
@@ -788,7 +818,9 @@ function stopStream() {
   _releaseWakeLock()
   _clearFacePanel()
   if (_fpsTimer)       { clearInterval(_fpsTimer);       _fpsTimer = null }
-  if (_facePanelTimer) { clearInterval(_facePanelTimer); _facePanelTimer = null }
+  if (_facePanelTimer)   { clearInterval(_facePanelTimer);   _facePanelTimer = null }
+  if (_frameTimeoutTimer){ clearTimeout(_frameTimeoutTimer); _frameTimeoutTimer = null }
+  _waitingResponse = false
   if (ws)          { ws.close(); ws = null }
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
   if (videoEl.value) videoEl.value.srcObject = null
