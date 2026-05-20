@@ -1236,3 +1236,56 @@ spoof_enabled = await get_anti_spoof_enabled()   # reads setting:anti_spoof_enab
 | `doc/project_management/SPRINT_LOG.md` | เพิ่ม Sprint 16, 17, 18 entries |
 | `doc/project_management/PROJECT_STATUS.md` | อัปเดต header date |
 | `CLAUDE.md` | เพิ่ม Worktree Rule section |
+
+---
+
+## Sprint 18b — Production Bug Fixes + Anti-Spoof Analysis (2026-05-20)
+**วันที่:** 2026-05-20  
+**เป้าหมาย:** แก้ bugs จาก production log จริง + วิเคราะห์ปัญหา mobile
+
+### Bugs ที่พบและแก้ไข
+
+#### BUG-007 — `AttendanceLog.check_in_time` ไม่มีอยู่จริง ✅ Fixed
+**อาการ:** `AbsentAlertService scan error: type object 'AttendanceLog' has no attribute 'check_in_time'`  
+**สาเหตุ:** `absent_alert_service.py` ใช้ชื่อ attribute ผิด — ORM ใช้ `timestamp` ไม่ใช่ `check_in_time`  
+**แก้:** `AttendanceLog.check_in_time` → `AttendanceLog.timestamp`  
+**ไฟล์:** `backend/app/services/absent_alert_service.py` line 75
+
+#### BUG-008 — Anti-spoof reject ทุก face จาก mobile โดยไม่มี log score ✅ Fixed
+**อาการ:** หลังเปิด `anti_spoof_enabled=1` → mobile scan หยุดทำงาน ไม่มี attendance log  
+**สาเหตุ:** MiniFASNet score จาก mobile = 0.018–0.049 (ต่ำมาก) เพราะ JPEG compression ทำลาย texture  
+**แก้:** เพิ่ม `logger.warning("Anti-spoof REJECTED: score=%.3f threshold=%.3f")` เพื่อ debug  
+**ไฟล์:** `backend/app/api/websocket.py` — Step 3 spoof check
+
+### Anti-Spoof Compatibility Analysis
+
+| สถานการณ์ | Score | เหมาะ? |
+|-----------|-------|--------|
+| Enrollment (ภาพนิ่ง) | สูง | ✅ ใช้ได้ดี |
+| Webcam USB คุณภาพสูง | ปกติ | ✅ ใช้ได้ |
+| Mobile browser scan | 0.018–0.049 | ❌ JPEG compression ทำลาย texture |
+
+**ข้อสรุป:** Anti-spoof ไม่เหมาะสำหรับ real-time mobile scan  
+**แนวทาง:** เปิด anti-spoof เฉพาะ enrollment, ปิดสำหรับ scan บนมือถือ
+
+### Mobile Performance Analysis
+
+**Red rectangle ช้า** — เป็น physics ของ CPU ไม่ใช่ bug:
+```
+ส่ง frame ทุก 500ms (2fps) + CPU inference 300–500ms = round-trip ~800ms–1s
+```
+GPU จะลดเหลือ ~50ms
+
+### ECONNRESET Analysis
+
+`Error: read/write ECONNRESET` ใน Vite console = **ปกติ** ใน dev mode  
+- เกิดเมื่อ backend restart, mobile ไป background, หรือ network blip  
+- Frontend มี auto-reconnect 3 วินาทีอยู่แล้ว  
+- Production (nginx) ไม่มี error เหล่านี้
+
+### Files Modified
+| File | การเปลี่ยนแปลง |
+|------|---------------|
+| `backend/app/services/absent_alert_service.py` | `check_in_time` → `timestamp` |
+| `backend/app/api/websocket.py` | เพิ่ม WARNING log เมื่อ anti-spoof reject |
+| `.gitignore` | เพิ่ม `logs/` |

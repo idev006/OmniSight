@@ -294,6 +294,8 @@ Phase 5 — Production     █████████████████�
 | BUG-004 | `PointIdsList` แทน raw list ใน Qdrant delete — แก้แล้ว | Medium | ✅ Fixed |
 | BUG-005 | uvicorn `--reload` Windows zombie process — กระบวนการเก่าถือ port 8000 หลังปิด terminal | High | ✅ Fixed Sprint 12: `taskkill` ใน `start-dev.bat` |
 | BUG-006 | Settings ทุกตัว (ยกเว้น `access_token_expire_hours`) ไม่ทำงาน — Redis key ว่างเปล่า | High | ✅ Fixed Sprint 12: startup DB→Redis sync + `_get_match_threshold()` |
+| BUG-007 | `AbsentAlertService` crash: `AttendanceLog` has no attribute `check_in_time` | High | ✅ Fixed Sprint 18b: เปลี่ยนเป็น `.timestamp` |
+| BUG-008 | Anti-spoof reject ทุก face จาก mobile (score 0.018–0.049) — JPEG compression ทำลาย texture | Medium | ✅ By Design: ปิด anti-spoof สำหรับ mobile scan, เปิดเฉพาะ enrollment |
 
 ---
 
