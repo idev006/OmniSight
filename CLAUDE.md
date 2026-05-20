@@ -1,7 +1,7 @@
 # OmniSight — AI Session Handover
 
 > อ่านไฟล์นี้ก่อนทุกครั้งที่เริ่ม session ใหม่  
-> 📖 หลักการทำงาน: `memory/PHILOSOPHY.md`
+> 📖 หลักการทำงาน: `doc/project_management/PHILOSOPHY.md`
 
 ---
 
@@ -204,6 +204,7 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 | ไฟล์ | เนื้อหา |
 |------|---------|
+| `doc/project_management/PHILOSOPHY.md` | **หลักการทำงาน 7 ข้อ** — อ่านก่อนเริ่มงานทุก session |
 | `doc/project_management/PROJECT_STATUS.md` | Dashboard + phase tracking |
 | `doc/project_management/SPRINT_LOG.md` | Sprint 1–18 history + context |
 | `doc/project_management/DECISIONS_LOG.md` | ADR-001 ถึง ADR-011 |
