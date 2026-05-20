@@ -141,6 +141,29 @@ Phase 5 — Production     █████████████████�
 
 ---
 
+## 2-Phase Pipeline Architecture (Sprint 20 — ✅ DONE)
+
+```
+Frame → detect → anti-spoof batch → search_batch → WHERE id IN(...)
+     → check_and_reserve() [Phase 1, Redis parallel]
+     → send_text()          ← frontend รับผลทันที
+     → asyncio.create_task(_persist_and_broadcast())  ← Phase 2 bg
+          ├─ own DB session
+          ├─ single INSERT + flush + commit
+          ├─ snapshot write in executor (non-blocking)
+          └─ Redis publish notifications
+```
+
+| Component | รายละเอียด |
+|-----------|-----------|
+| `check_and_reserve()` | Phase 1 — parallel Redis EXISTS + SET ก่อน send_text |
+| `persist_attendance_batch()` | Phase 2 — own session, single transaction, N records |
+| Race condition guard | Cooldown set ใน Phase 1 ก่อน DB write → ป้องกัน double-log |
+| Employee lookup | `WHERE id IN (...)` — 1 query + dict lookup (thread-safe) |
+| Disk write | `run_in_executor(None, write_bytes, data)` — non-blocking |
+
+---
+
 ## Anti-Spoofing Architecture (Sprint 13 — ✅ DONE)
 
 | Component | รายละเอียด |
@@ -183,7 +206,7 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-## งานที่ต้องทำถัดไป (Sprint 19+)
+## งานที่ต้องทำถัดไป (Sprint 21+)
 
 ### ลำดับความสำคัญ
 1. 🟢 **Grafana dashboard** — visualize Prometheus metrics จาก `GET /metrics`
@@ -241,4 +264,4 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-19 (Sprint 18 — Anti-spoof debug, 10+ faces analysis, Mobile UI review, Worktree rule)*
+*อัพเดทล่าสุด: 2026-05-20 (Sprint 20 — 2-phase multi-face pipeline redesign, settings validation, offline banner, Mobile Recent Results Strip)*

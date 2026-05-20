@@ -1,6 +1,6 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-20 (Sprint 19 — System Info admin dashboard, BUG-007/008 fixes)  
+> **อัปเดตล่าสุด:** 2026-05-20 (Sprint 20 — 2-phase multi-face pipeline redesign)  
 > **Project Manager / Lead Dev:** idev006  
 > **AI Pair:** Claude Sonnet 4.6  
 > **Repository:** https://github.com/idev006/OmniSight  
@@ -293,6 +293,17 @@ Phase 5 — Production     █████████████████�
 | S19.3 | `router/index.js` — `/system` route (ADMIN only) | ✅ Done | 2026-05-20 |
 | S19.4 | `AppLayout.vue` — "System Info" menu item ใน System section | ✅ Done | 2026-05-20 |
 
+### Sprint 20 — 2-Phase Multi-Face Pipeline Redesign ✅ DONE
+**วันที่:** 2026-05-20
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S20.1 | `websocket.py` — remove async with wrapper from while loop, add `_persist_and_broadcast()` bg task | ✅ Done | 2026-05-20 |
+| S20.2 | `attendance_service.py` — `check_and_reserve()` Phase 1 + `persist_attendance_batch()` Phase 2 | ✅ Done | 2026-05-20 |
+| S20.3 | `redis.py` — expose `get_cooldown_seconds()` as public | ✅ Done | 2026-05-20 |
+| S20.4 | Employee lookup: N concurrent queries → `WHERE id IN (...)` (1 round-trip, thread-safe) | ✅ Done | 2026-05-20 |
+| S20.5 | Sync disk write → `run_in_executor(None, write_bytes, data)` | ✅ Done | 2026-05-20 |
+
 ### Remaining Production Work
 | # | งาน | สถานะ | Priority |
 |---|-----|--------|----------|
@@ -301,6 +312,7 @@ Phase 5 — Production     █████████████████�
 | 5.9 | rtsp_agent Dockerfile | ✅ Done (Sprint 15) | — |
 | 5.10 | Grafana dashboard (visualize Prometheus metrics) | ⬜ Todo | 🟢 LOW |
 | 5.11 | System Info admin dashboard | ✅ Done (Sprint 19) | — |
+| 5.12 | 2-phase multi-face pipeline | ✅ Done (Sprint 20) | — |
 
 ---
 

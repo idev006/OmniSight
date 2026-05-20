@@ -1349,3 +1349,84 @@ GPU จะลดเหลือ ~50ms
 | `frontend/src/views/SystemView.vue` | NEW — admin dashboard view |
 | `frontend/src/router/index.js` | เพิ่ม /system route (ADMIN) |
 | `frontend/src/layouts/AppLayout.vue` | เพิ่ม System Info menu item |
+
+---
+
+## Sprint 20 — 2-Phase Multi-Face Pipeline Redesign (2026-05-20)
+**วันที่:** 2026-05-20  
+**เป้าหมาย:** World-class multi-face recognition pipeline — ถูกต้อง, รวดเร็ว, ไม่มี race condition
+
+### Background
+ปัญหาของ pipeline เดิม:
+- N async `db.execute()` บน AsyncSession เดียวกัน (unsafe concurrent access)
+- Cooldown check + DB write อยู่ใน critical path → ช้า
+- Sync disk write (`write_bytes`) บน event loop → blocking
+- ไม่มี batch queries (N Qdrant round-trips, N SQL queries)
+
+### สถาปัตยกรรมใหม่ (2-Phase Design)
+
+```
+Frame arrives
+     │
+     ▼
+[PHASE 1 — CRITICAL PATH]
+  decode JPEG → FaceDetect → anti-spoof batch → Qdrant search_batch
+  → WHERE id IN (...) lookup → check_and_reserve() [Redis, parallel]
+  → build FaceResult list
+     │
+     ▼
+ send_text()   ← frontend รับผลทันที
+     │
+     ▼
+[PHASE 2 — BACKGROUND]  asyncio.create_task()
+  persist_attendance_batch()
+    ├─ own DB session
+    ├─ single transaction (all N records)
+    ├─ snapshot saves in executor (non-blocking)
+    └─ Redis publish notifications
+```
+
+### สิ่งที่ทำ
+
+#### 1. `backend/app/api/websocket.py` — Pipeline Redesign
+- **ลบ** `async with async_session_factory() as db:` จาก while loop ทั้งหมด
+- **Phase 1**: เพิ่ม `check_and_reserve(matches)` — parallel Redis EXISTS + SET ก่อน `send_text()`
+- **Phase 2**: เพิ่ม `asyncio.create_task(_persist_and_broadcast(...))` หลัง `send_text()`
+- **`_persist_and_broadcast()`**: background function เปิด DB session ของตัวเอง
+- **Employee lookup**: เปลี่ยนจาก N concurrent `db.execute()` → `WHERE id IN (...)` + dict lookup (1 round-trip, thread-safe)
+- Import เปลี่ยน: `check_and_reserve, persist_attendance_batch` แทน `log_attendance`
+
+#### 2. `backend/app/services/attendance_service.py` — Complete Rewrite
+- **`check_and_reserve(matches)`** — Phase 1, Redis only, parallel gather:
+  - Parallel EXISTS checks สำหรับทุก match
+  - Parallel SET cooldown สำหรับ match ที่จะ log
+  - Set cooldown ก่อน DB write → ป้องกัน race condition ข้าม frames
+  - Returns `list[bool]` — True = จะถูก log
+- **`persist_attendance_batch(to_persist)`** — Phase 2, own DB session:
+  - Single `flush()` → เอา IDs ทุกตัวใน 1 round-trip
+  - Parallel snapshot saves ด้วย `run_in_executor` (sync `write_bytes` ไม่บล็อก event loop)
+  - Single `commit()` สำหรับทุก N records
+- **`log_attendance()`**: legacy function ยังคงไว้ใช้ใน tests + scripts
+
+#### 3. `backend/app/db/redis.py`
+- Rename `_get_cooldown_seconds` → `get_cooldown_seconds` (public)
+- `attendance_service.py` import function นี้ตรงๆ
+
+### Race Condition Prevention
+
+| ปัญหา | วิธีแก้ |
+|-------|--------|
+| Frame N+1 มาในขณะที่ DB write ยังค้างอยู่ | Set Redis cooldown ใน Phase 1 ก่อน DB write |
+| Concurrent coroutines บน AsyncSession เดียวกัน | Phase 2 เปิด session ใหม่ทุกครั้ง |
+| Event loop blocking จาก disk write | `run_in_executor(None, snap_path.write_bytes, data)` |
+| N SQL queries สำหรับ N matches | `WHERE id IN (...)` → 1 query + dict lookup |
+
+### Files Modified
+| File | การเปลี่ยนแปลง |
+|------|---------------|
+| `backend/app/api/websocket.py` | 2-phase pipeline, `_persist_and_broadcast()` background task |
+| `backend/app/services/attendance_service.py` | `check_and_reserve()` + `persist_attendance_batch()` |
+| `backend/app/db/redis.py` | expose `get_cooldown_seconds` as public |
+
+### Commit
+- `26ce1b6` — Sprint 20: 2-phase multi-face pipeline redesign
