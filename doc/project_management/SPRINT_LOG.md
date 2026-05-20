@@ -1289,3 +1289,63 @@ GPU จะลดเหลือ ~50ms
 | `backend/app/services/absent_alert_service.py` | `check_in_time` → `timestamp` |
 | `backend/app/api/websocket.py` | เพิ่ม WARNING log เมื่อ anti-spoof reject |
 | `.gitignore` | เพิ่ม `logs/` |
+
+---
+
+## Sprint 19 — System Info Admin Dashboard (2026-05-20)
+**วันที่:** 2026-05-20  
+**เป้าหมาย:** หน้า admin ที่แสดงสถานะ services ทุกตัวใน Single Pane of Glass
+
+### สิ่งที่ทำ
+
+#### 1. Backend — `backend/app/api/system.py` (NEW)
+- `GET /api/v1/system/info` — admin-only endpoint (Depends require_admin)
+- Query services ทุกตัวพร้อมกัน: App, Face Engine, Anti-Spoof, PostgreSQL, Qdrant, Redis, Storage
+
+| Function | ข้อมูลที่ดึง |
+|----------|------------|
+| `_app_info()` | version, uptime, ONNX provider, detect_size, inference_workers |
+| `_face_engine_info()` | loaded status, model name, det_size |
+| `_anti_spoof_info()` | available, model path, note |
+| `_postgres_info()` | version, db size MB, host, row counts (8 tables) |
+| `_qdrant_info()` | host, collection, vectors_count, points_count, vector_size, distance, quantization |
+| `_redis_info()` | url, version, memory MB, peak MB, clients, uptime, keyspace |
+| `_storage_info()` | path, snapshots count, snapshots MB, disk free/total GB |
+
+#### 2. Backend — `backend/main.py`
+- Import `system` router และ register ที่ `/api/v1/system`
+
+#### 3. Frontend — `frontend/src/views/SystemView.vue` (NEW)
+- Grid layout 3 columns: App, Face Engine, Anti-Spoof, PostgreSQL, Qdrant, Redis, Storage
+- StatusBadge component: green `ok` / red `error` badge
+- Row component: label + value pair (mono option, highlight option)
+- Stat component: compact number + label สำหรับ row counts
+- `formatUptime()`: แปลง seconds → "Xd Xh Xm"
+- `onnxColor()`: CUDA=green, DirectML/ROCm=blue, CPU=gray
+- Loading skeleton 6 cards ขณะ fetch
+- Error alert + Refresh button
+
+#### 4. Frontend — `frontend/src/router/index.js`
+- เพิ่ม route `/system` → `SystemView.vue` (ADMIN only)
+
+#### 5. Frontend — `frontend/src/layouts/AppLayout.vue`
+- เพิ่ม menu item "System Info" ใต้หมวด System (sidebar)
+
+### ประโยชน์ของ System Info Page
+
+| Scenario | ก่อน | หลัง |
+|----------|------|------|
+| ระบบช้าลง | SSH + `nvidia-smi` | เปิดหน้า → ONNX provider card |
+| Enrollment ไม่ผ่าน | ไม่รู้สาเหตุ | Face Engine `loaded: error` ทันที |
+| DB ใกล้เต็ม | SSH + `df -h` + `psql` | Disk free GB + DB size MB ในหน้าเดียว |
+| Qdrant vs Postgres sync | คำนวณเอง | `Vectors: 6` vs `Enrolled: 6` |
+| Redis หาย | debug blindly | Redis card แดง → แก้ได้เลย |
+
+### Files Modified
+| File | การเปลี่ยนแปลง |
+|------|---------------|
+| `backend/app/api/system.py` | NEW — system info endpoint |
+| `backend/main.py` | register system router |
+| `frontend/src/views/SystemView.vue` | NEW — admin dashboard view |
+| `frontend/src/router/index.js` | เพิ่ม /system route (ADMIN) |
+| `frontend/src/layouts/AppLayout.vue` | เพิ่ม System Info menu item |

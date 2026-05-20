@@ -1,6 +1,6 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-19 (Sprint 18 — Anti-spoof debug, 10+ faces analysis, Mobile UI review, Worktree rule)  
+> **อัปเดตล่าสุด:** 2026-05-20 (Sprint 19 — System Info admin dashboard, BUG-007/008 fixes)  
 > **Project Manager / Lead Dev:** idev006  
 > **AI Pair:** Claude Sonnet 4.6  
 > **Repository:** https://github.com/idev006/OmniSight  
@@ -274,6 +274,25 @@ Phase 5 — Production     █████████████████�
 | S16.6 | `SettingsView.vue` — Line Notify + Email (SMTP) fields in Notifications group | ✅ Done | 2026-05-19 |
 | S16.7 | Phase 2 → 100%, Phase 3 → 100% ✅ | ✅ Done | 2026-05-19 |
 
+### Sprint 18b — Bug Fixes + Anti-Spoof Analysis ✅ DONE
+**วันที่:** 2026-05-20
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S18b.1 | BUG-007: `absent_alert_service.py` — `check_in_time` → `timestamp` | ✅ Done | 2026-05-20 |
+| S18b.2 | BUG-008: anti-spoof WARNING log เมื่อ reject — วิเคราะห์ mobile JPEG compression | ✅ Done | 2026-05-20 |
+| S18b.3 | `.gitignore` — เพิ่ม `logs/` | ✅ Done | 2026-05-20 |
+
+### Sprint 19 — System Info Admin Dashboard ✅ DONE
+**วันที่:** 2026-05-20
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S19.1 | `backend/app/api/system.py` — `GET /api/v1/system/info` (admin-only, 7 services) | ✅ Done | 2026-05-20 |
+| S19.2 | `frontend/src/views/SystemView.vue` — dashboard cards: App, Face Engine, Anti-Spoof, Postgres, Qdrant, Redis, Storage | ✅ Done | 2026-05-20 |
+| S19.3 | `router/index.js` — `/system` route (ADMIN only) | ✅ Done | 2026-05-20 |
+| S19.4 | `AppLayout.vue` — "System Info" menu item ใน System section | ✅ Done | 2026-05-20 |
+
 ### Remaining Production Work
 | # | งาน | สถานะ | Priority |
 |---|-----|--------|----------|
@@ -281,6 +300,7 @@ Phase 5 — Production     █████████████████�
 | 5.5 | Performance test (10 cameras) | ✅ Done (Sprint 15d) | — |
 | 5.9 | rtsp_agent Dockerfile | ✅ Done (Sprint 15) | — |
 | 5.10 | Grafana dashboard (visualize Prometheus metrics) | ⬜ Todo | 🟢 LOW |
+| 5.11 | System Info admin dashboard | ✅ Done (Sprint 19) | — |
 
 ---
 
