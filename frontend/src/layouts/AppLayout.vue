@@ -13,6 +13,27 @@
         <span class="font-bold ml-2 tracking-widest text-primary">OMNISIGHT</span>
       </div>
 
+      <!-- ── Server status banner ─────────────────────────────────────────── -->
+      <!-- Offline: แสดงตลอดเวลา พร้อม retry countdown -->
+      <div v-if="!serverOnline"
+           class="bg-error text-error-content text-xs px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2">
+          <span class="loading loading-spinner loading-xs shrink-0"></span>
+          <span class="font-semibold">ไม่สามารถเชื่อมต่อ server ได้</span>
+          <span class="opacity-80">— ระบบ scan และการลงเวลาหยุดทำงานชั่วคราว</span>
+        </div>
+        <span class="opacity-70 shrink-0">ลองใหม่ใน {{ retryCountdown }}s</span>
+      </div>
+      <!-- Reconnected: แสดงสั้นๆ แล้วหาย -->
+      <div v-else-if="justReconnected"
+           class="bg-success text-success-content text-xs px-4 py-2.5 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+        </svg>
+        <span class="font-semibold">เชื่อมต่อ server แล้ว</span>
+        <span class="opacity-80">— ระบบพร้อมใช้งาน</span>
+      </div>
+
       <!-- Page content -->
       <main class="flex-1 p-4 md:p-6 max-w-screen-xl w-full mx-auto">
         <RouterView />
@@ -202,7 +223,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, THEMES } from '@/stores/theme'
 import { useConfirm } from '@/composables/useConfirm'
@@ -210,6 +231,65 @@ import { useConfirm } from '@/composables/useConfirm'
 const auth = useAuthStore()
 const themeStore = useThemeStore()
 const { confirm } = useConfirm()
+
+// ── Server health polling ─────────────────────────────────────────────────────
+const serverOnline    = ref(true)
+const justReconnected = ref(false)
+const retryCountdown  = ref(30)
+
+let _healthTimer   = null
+let _countdownTimer = null
+let _wasOffline    = false
+
+async function checkHealth() {
+  try {
+    // native fetch เพื่อเลี่ยง axios interceptor
+    const res = await fetch('/health', {
+      signal: AbortSignal.timeout(5000),
+      cache:  'no-store',
+    })
+    if (res.ok) {
+      if (_wasOffline) {
+        // เพิ่งกลับมา → แสดง reconnected banner 3 วินาที
+        justReconnected.value = true
+        setTimeout(() => { justReconnected.value = false }, 3000)
+        _wasOffline = false
+      }
+      serverOnline.value = true
+    } else {
+      _goOffline()
+    }
+  } catch {
+    _goOffline()
+  }
+}
+
+function _goOffline() {
+  serverOnline.value = true  // set false ด้านล่าง — ทำที่นี่เพื่อ reset countdown ด้วย
+  _wasOffline = true
+  serverOnline.value = false
+  retryCountdown.value = 30
+}
+
+function _startCountdown() {
+  clearInterval(_countdownTimer)
+  _countdownTimer = setInterval(() => {
+    if (!serverOnline.value) {
+      retryCountdown.value = Math.max(0, retryCountdown.value - 1)
+    }
+  }, 1000)
+}
+
+onMounted(() => {
+  checkHealth()                                    // ตรวจทันทีที่โหลด
+  _healthTimer = setInterval(checkHealth, 30_000)  // ตรวจทุก 30 วินาที
+  _startCountdown()
+})
+
+onUnmounted(() => {
+  clearInterval(_healthTimer)
+  clearInterval(_countdownTimer)
+})
 
 async function handleLogout() {
   const ok = await confirm(

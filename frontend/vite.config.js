@@ -22,6 +22,11 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // Health check — ใช้โดย AppLayout offline banner
+      '/health': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
     },
   },
 })
