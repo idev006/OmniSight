@@ -138,10 +138,20 @@ class FaceTracker:
 
         return result
 
-    def get_cached_result(self, track_id: int) -> "FaceResult | None":
+    def get_cached_result(
+        self, track_id: int, ttl: float = RESULT_CACHE_S
+    ) -> "FaceResult | None":
+        """
+        Return cached FaceResult for this track if still within ttl seconds.
+
+        ttl is passed from the caller so that the admin-configurable
+        setting:recognition_cache_ttl takes effect without restarting.
+        Default falls back to module-level RESULT_CACHE_S (4 s) when
+        no caller-supplied value is available.
+        """
         track = self._tracks.get(track_id)
         if track and track.result is not None:
-            if time.monotonic() - track.result_time < RESULT_CACHE_S:
+            if time.monotonic() - track.result_time < ttl:
                 return track.result
         return None
 

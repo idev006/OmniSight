@@ -142,13 +142,19 @@ async def _get_frame_settings() -> dict:
             get_anti_spoof_threshold(),
             get_unknown_alert_threshold(),
             _redis.get("setting:inference_workers"),
+            _redis.get("setting:recognition_cache_ttl"),
         )
+        raw_cache_ttl = vals[6]
         _cached_settings = {
-            "max_fps":           vals[0],
-            "match_threshold":   vals[1],
-            "spoof_enabled":     vals[2] and anti_spoof_engine.available,
-            "spoof_threshold":   vals[3],
-            "unknown_threshold": vals[4],
+            "max_fps":               vals[0],
+            "match_threshold":       vals[1],
+            "spoof_enabled":         vals[2] and anti_spoof_engine.available,
+            "spoof_threshold":       vals[3],
+            "unknown_threshold":     vals[4],
+            # recognition_cache_ttl: how long a Qdrant result is reused per tracking_id
+            # Default 30 s — safe because if the person leaves, the track expires in 2 s
+            # and the next person gets a fresh tracking_id → fresh Qdrant search.
+            "recognition_cache_ttl": max(5.0, float(raw_cache_ttl)) if raw_cache_ttl else 30.0,
         }
         # Dynamic worker scaling — resize executor if admin changed the setting
         raw_workers = vals[5]
@@ -261,8 +267,9 @@ async def scan_ws(
             faces:      list[FaceResult] = []
             to_process: list[tuple[int, np.ndarray, list[int]]] = []
 
+            cache_ttl = cfg["recognition_cache_ttl"]
             for tid, emb, bbox in tracked:
-                cached = tracker.get_cached_result(tid)
+                cached = tracker.get_cached_result(tid, ttl=cache_ttl)
                 if cached is not None:
                     CACHE_HITS.inc()
                     faces.append(cached.model_copy(update={

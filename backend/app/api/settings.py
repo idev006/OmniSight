@@ -29,9 +29,10 @@ LIVENESS = {
     "cooldown_seconds":   "live",
     "unknown_face_alert": "live",
     # Performance
-    "max_fps_per_camera": "live",
-    "inference_workers":  "restart",
-    "face_detect_size":   "restart",
+    "max_fps_per_camera":        "live",
+    "recognition_cache_ttl":    "live",    # picked up at next settings cache refresh (≤5 s)
+    "inference_workers":        "restart",
+    "face_detect_size":         "restart",
 }
 
 # ── Value validators ────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ _VALIDATORS: dict[str, tuple] = {
     "late_threshold_minutes":    ("int",   0,    480),
     "max_fps_per_camera":        ("int",   1,    30),
     "inference_workers":         ("int",   1,    32),
+    "recognition_cache_ttl":     ("int",   5,    300),    # seconds to reuse Qdrant result per tracking_id
     "face_detect_size":          ("int",   [320, 640]),   # only valid ONNX sizes
     "anti_spoof_enabled":        ("int",   [0,   1]),
     "anti_spoof_threshold":      ("float", 0.1,  1.0),
