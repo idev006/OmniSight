@@ -73,7 +73,7 @@
         </div>
         <div class="flex items-center gap-2">
           <span v-if="frameCount > 0" class="text-white/20 text-xs font-mono">{{ frameCount }} frames</span>
-          <div class="flex items-center gap-1 text-white/25 text-xs">
+          <div v-if="wsState === 'open'" class="flex items-center gap-1 text-white/25 text-xs">
             <span class="font-mono">{{ localFps.toFixed(1) }}</span>
             <span>fps</span>
           </div>
@@ -601,6 +601,7 @@ function _connectWS(stationId) {
 
   ws.onclose = (e) => {
     wsState.value = 'closed'
+    _clearBBoxCanvas()        // ลบ bbox ค้างทันทีที่ WS ปิด — ไม่ให้เห็น stale boxes ระหว่าง reconnect
     if (_destroyed || !streaming.value) return
     if (e.code === 4001 || e.code === 4003) {
       wsState.value = 'disconnected'
@@ -682,6 +683,13 @@ function _sendFrame() {
  * Also draws a small name label below each box so the operator can
  * glance at the camera and know who's who without reading the panel.
  */
+function _clearBBoxCanvas() {
+  const canvas = canvasEl.value
+  if (!canvas) return
+  const ctx = _bboxCtx || canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+}
+
 function drawBBoxes(faces) {
   const canvas = canvasEl.value
   const video  = videoEl.value
