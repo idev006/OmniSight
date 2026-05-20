@@ -35,7 +35,7 @@ async def delete_station_filter(station_id: str):
 _COOLDOWN_DEFAULT = 300  # fallback ถ้า Redis/DB ไม่มีค่า
 
 
-async def _get_cooldown_seconds() -> int:
+async def get_cooldown_seconds() -> int:
     """อ่าน cooldown_seconds จาก Redis (write-through จาก Settings UI) — มีผลทันที"""
     try:
         val = await redis.get("setting:cooldown_seconds")
@@ -116,7 +116,7 @@ async def set_attendance_cooldown(employee_id: str, station_id: str):
     """ตั้ง cooldown key โดย TTL อ่านจาก Settings UI แบบ real-time"""
     try:
         key = f"cooldown:{employee_id}:{station_id}"
-        ttl = await _get_cooldown_seconds()
+        ttl = await get_cooldown_seconds()
         await redis.setex(key, ttl, "1")
     except Exception:
         logger.warning(f"Redis unavailable — cooldown not set for {employee_id}")
