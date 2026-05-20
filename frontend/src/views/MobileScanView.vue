@@ -67,7 +67,9 @@
       <!-- Panel header -->
       <div class="flex items-center justify-between px-4 py-2 border-b border-white/8 shrink-0">
         <div class="text-xs font-semibold text-white/40 uppercase tracking-widest">
-          {{ streaming ? (displayFaces.length > 0 ? `${displayFaces.length} ใบหน้า` : 'กำลังสแกน…') : 'ผลการสแกน' }}
+          {{ streaming
+              ? (displayFaces.length > 0 ? `Check-ins ล่าสุด` : 'กำลังสแกน…')
+              : 'ผลการสแกน' }}
         </div>
         <div class="flex items-center gap-2">
           <span v-if="frameCount > 0" class="text-white/20 text-xs font-mono">{{ frameCount }} frames</span>
@@ -86,7 +88,7 @@
           class="flex flex-col items-center justify-center h-full gap-2 text-white/25 py-6">
           <div class="text-3xl opacity-60">{{ streaming ? '👁️' : '—' }}</div>
           <div class="text-sm text-center px-6">
-            {{ streaming ? 'ไม่พบใบหน้าในเฟรม' : 'ยังไม่ได้เริ่มสแกน' }}
+            {{ streaming ? 'รอการสแกนครั้งถัดไป…' : 'ยังไม่ได้เริ่มสแกน' }}
           </div>
         </div>
 
@@ -280,8 +282,17 @@ const FACE_PERSIST_MS = 7000       // face stays in panel 7s after last seen
 
 function _updateFacePanel(faces) {
   const now = Date.now()
-  // Unknown faces = audio/bbox only — not shown in panel (ลด visual clutter)
-  for (const face of faces.filter(f => f.status !== 'unknown')) {
+  // Panel = event feed, not "who's in frame"
+  // Only show actionable events:
+  //   • attendance_logged = true  → fresh check-in today  (show 7s then gone)
+  //   • status = 'spoof'          → security alert         (show 7s then gone)
+  // Excluded (audio/bbox only, no card):
+  //   • already logged (repeat)   → noise if 10 people standing still
+  //   • unknown                   → too noisy, handled by audio+vibrate
+  const actionable = faces.filter(f =>
+    (f.status === 'match' && f.attendance_logged) || f.status === 'spoof'
+  )
+  for (const face of actionable) {
     const existing = _faceMap.get(face.tracking_id)
     _faceMap.set(face.tracking_id, {
       ...face,
@@ -340,8 +351,14 @@ function faceStatusLabel(face) {
 }
 
 // ── Per-tracking_id audio cooldown (prevents beep spam) ──────────────────────
-const _audioCooldown    = new Map()
-const AUDIO_COOLDOWN_MS = 3000
+// cooldown แยกตาม event type:
+//   fresh check-in → 5s   (ต้องการได้ยินทุกคนที่ผ่านใหม่)
+//   already logged → 60s  (1 soft ack ต่อนาที — ไม่รำคาญถ้า 10 คนยืนแช่)
+//   unknown/spoof  → 5s   (security — ยังต้องเตือนบ่อยพอ)
+const _audioCooldown        = new Map()
+const AUDIO_COOLDOWN_NEW    = 5_000   // ms — fresh log today
+const AUDIO_COOLDOWN_REPEAT = 60_000  // ms — already logged (standing still)
+const AUDIO_COOLDOWN_ALERT  = 5_000   // ms — unknown / spoof
 
 // ── Unknown debounce — per tracking_id ───────────────────────────────────────
 // Wait N frames of consecutive "unknown" before showing audio alert
@@ -416,12 +433,20 @@ function _vibrate(pattern) {
 function _handleAudioFeedback(face) {
   const now      = Date.now()
   const lastPlay = _audioCooldown.get(face.tracking_id) || 0
-  if (now - lastPlay < AUDIO_COOLDOWN_MS) return
+
+  // Pick cooldown based on event type
+  const cooldown = (face.status === 'match' && !face.attendance_logged)
+    ? AUDIO_COOLDOWN_REPEAT   // already logged — 60s (ไม่รำคาญถ้ายืนแช่)
+    : (face.status === 'match' && face.attendance_logged)
+      ? AUDIO_COOLDOWN_NEW    // fresh check-in — 5s
+      : AUDIO_COOLDOWN_ALERT  // unknown / spoof — 5s
+
+  if (now - lastPlay < cooldown) return
   _audioCooldown.set(face.tracking_id, now)
 
-  // Trim stale entries
-  if (_audioCooldown.size > 30) {
-    const cutoff = now - AUDIO_COOLDOWN_MS
+  // Trim stale entries (prevent unbounded growth in long sessions)
+  if (_audioCooldown.size > 50) {
+    const cutoff = now - AUDIO_COOLDOWN_REPEAT  // use longest cooldown as TTL
     for (const [id, ts] of _audioCooldown) {
       if (ts < cutoff) _audioCooldown.delete(id)
     }
@@ -432,7 +457,7 @@ function _handleAudioFeedback(face) {
       _beep(880, 0.12, 0.5)
       setTimeout(() => _speak(face.full_name || 'เข้างานแล้ว'), 100)
     } else {
-      _beep(660, 0.08, 0.25)   // already logged — soft ack
+      _beep(660, 0.06, 0.15)   // already logged — barely audible, just acknowledge
     }
   } else if (face.status === 'unknown') {
     _beep(220, 0.35, 0.6)
