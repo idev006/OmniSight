@@ -1,30 +1,29 @@
 <template>
   <!--
-    Mobile Scanner — Smartphone Camera Agent (HUD Edition)
-    ─────────────────────────────────────────────────────
-    Philosophy: "Smartphone as a Camera Agent"
-    The OPERATOR holds the phone at the gate and points the rear camera
-    at people walking through. The system recognises faces and notifies
-    the operator WITHOUT requiring them to look at the screen constantly.
+    Mobile Scanner — 3-Panel Layout (Sprint 21)
+    ────────────────────────────────────────────
+    Panel 1 (top ~50vh)   — Camera feed + bbox overlay
+    Panel 2 (flex-1)      — Face info panel: all detected faces with rich detail
+    Panel 3 (fixed)       — Controls: station, start/stop, camera, audio
 
-    Key UX pillars:
-      1. Wake Lock      — screen never turns off during a session
-      2. Audio feedback — beep + TTS name so operator can look away
-      3. HUD overlay    — large result card readable in bright sunlight
-      4. Vibration      — tactile alert for unknown faces
+    Philosophy: "Smartphone as a Camera Agent"
+    Audio (beep + TTS) is primary feedback — operator can look away.
+    Face info panel replaces the old HUD center overlay + recent chips
+    with a clean scrollable list showing ALL faces simultaneously.
   -->
   <div class="fixed inset-0 bg-black flex flex-col overflow-hidden select-none">
 
-    <!-- ── Video feed ────────────────────────────────────────────────────── -->
-    <div class="relative flex-1 min-h-0">
+    <!-- ═══════════════════════════════════════════════════════════════════
+         PANEL 1 — Camera feed
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="relative shrink-0 bg-black overflow-hidden" style="height: 50vh; min-height: 200px">
       <video ref="videoEl" class="w-full h-full object-cover" autoplay playsinline muted />
       <canvas ref="canvasEl" class="absolute inset-0 w-full h-full pointer-events-none" />
 
-      <!-- ── HUD: top bar ──────────────────────────────────────────────── -->
-      <div class="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-safe pt-3 pb-2"
-        style="background: linear-gradient(rgba(0,0,0,0.55), transparent)">
+      <!-- Top bar: WS status + station name + wake lock -->
+      <div class="absolute top-0 left-0 right-0 flex items-center justify-between px-3 pt-safe pt-2 pb-2"
+        style="background: linear-gradient(rgba(0,0,0,0.6), transparent)">
 
-        <!-- WS status -->
         <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold backdrop-blur-sm"
           :class="wsStatusClass">
           <span class="w-1.5 h-1.5 rounded-full"
@@ -32,7 +31,6 @@
           {{ wsStatusLabel }}
         </div>
 
-        <!-- Station + Wake Lock indicator -->
         <div class="flex items-center gap-2">
           <span v-if="wakeLockActive" class="text-white/50 text-xs" title="Screen will not turn off">☀️</span>
           <div v-if="selectedStation"
@@ -42,99 +40,115 @@
         </div>
       </div>
 
-      <!-- ── HUD: Recent results strip ─────────────────────────────────────
-           แสดงทุกใบหน้าที่ scan ได้ใน 10 วินาทีล่าสุด เรียงซ้าย→ขวา (ใหม่สุดซ้าย)
-           chip สีเขียว = logged ✅ | เทา = already logged 🔁 | แดง = unknown ⚠️
-      ──────────────────────────────────────────────────────────────────── -->
-      <div v-if="recentResults.length > 0"
-        class="absolute bottom-2 left-2 right-2 flex gap-1.5 flex-wrap justify-end pointer-events-none"
-        style="z-index:10"
-      >
-        <TransitionGroup name="chip">
-          <div v-for="r in recentResults" :key="r.animKey"
-            class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm"
-            :class="r.status === 'unknown'
-              ? 'bg-red-600/80 text-white'
-              : r.attendance_logged
-                ? 'bg-green-600/80 text-white'
-                : 'bg-black/50 text-white/60'"
-          >
-            <span>{{ r.status === 'unknown' ? '⚠️' : r.attendance_logged ? '✅' : '🔁' }}</span>
-            <span class="max-w-[110px] truncate">{{ r.full_name || 'Unknown' }}</span>
-          </div>
-        </TransitionGroup>
-      </div>
-
-      <!-- ── HUD: Center overlay (priority: unknown > new check-in) ──────────
-           :key="overlay.animKey" → เพิ่ม counter ทุกครั้งที่เปลี่ยนคน
-           ทำให้ Vue animate ใหม่ แม้ type เดิม (match→match คนต่างกัน)
-      ──────────────────────────────────────────────────────────────────── -->
-      <Transition name="result-pop" mode="out-in"
-        @before-leave="() => { _transitioning = true }"
-        @after-leave="() => { _transitioning = false; if (_pendingFace) { _applyOverlay(_pendingFace); _pendingFace = null } }"
-      >
-        <div v-if="overlay.visible"
-          :key="overlay.animKey"
-          class="absolute inset-x-4 rounded-2xl px-6 py-5 flex items-center gap-4"
-          :style="{
-            top: '45%',
-            transform: 'translateY(-50%)',
-            backdropFilter: 'blur(8px)',
-            background: overlay.type === 'match'
-              ? 'rgba(22,163,74,0.92)'
-              : 'rgba(220,38,38,0.92)',
-          }"
-        >
-          <!-- MATCH content -->
-          <template v-if="overlay.type === 'match'">
-            <div class="text-5xl leading-none shrink-0">✅</div>
-            <div class="min-w-0 flex-1">
-              <div class="text-white font-black leading-tight" style="font-size: clamp(22px,6vw,32px)">
-                {{ overlay.full_name }}
-              </div>
-              <div v-if="overlay.dept_name" class="text-white/80 font-medium mt-0.5" style="font-size: clamp(14px,4vw,18px)">
-                {{ overlay.dept_name }}
-              </div>
-              <div class="flex items-center gap-3 mt-2">
-                <span v-if="overlay.emp_code" class="text-white/60 text-xs font-mono">{{ overlay.emp_code }}</span>
-                <span v-if="overlay.confidence" class="text-white/60 text-xs font-mono">
-                  {{ (overlay.confidence * 100).toFixed(1) }}%
-                </span>
-                <span v-if="overlay.attendance_logged" class="text-white text-xs font-bold bg-white/20 px-2 py-0.5 rounded-full">
-                  ✓ Logged
-                </span>
-                <span v-else class="text-white/50 text-xs">Already logged</span>
-              </div>
-            </div>
-          </template>
-
-          <!-- UNKNOWN content -->
-          <template v-else>
-            <div class="text-5xl leading-none shrink-0 animate-pulse">⚠️</div>
-            <div>
-              <div class="text-white font-black" style="font-size: clamp(20px,5.5vw,28px)">ใบหน้าไม่รู้จัก</div>
-              <div class="text-white/80 mt-1" style="font-size: clamp(13px,3.5vw,16px)">กรุณาตรวจสอบ</div>
-            </div>
-          </template>
-        </div>
-      </Transition>
-
-      <!-- ── HUD: Paused overlay ────────────────────────────────────────── -->
+      <!-- Paused overlay -->
       <Transition name="fade">
-        <div v-if="paused" class="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
+        <div v-if="paused" class="absolute inset-0 flex flex-col items-center justify-center bg-black/75">
           <div class="text-white text-5xl mb-3">⏸</div>
           <div class="text-white text-lg font-bold">Paused by Console</div>
           <div class="text-white/50 text-sm mt-1">Waiting for resume…</div>
         </div>
       </Transition>
+
+      <!-- Not-streaming hint -->
+      <Transition name="fade">
+        <div v-if="!streaming && !starting"
+          class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50">
+          <div class="text-white/30 text-4xl">📷</div>
+          <div class="text-white/40 text-sm">เลือก Station แล้วกด Start</div>
+        </div>
+      </Transition>
     </div>
 
-    <!-- ── Bottom control bar ─────────────────────────────────────────────── -->
-    <div class="bg-black/95 border-t border-white/10 px-4 pt-3 pb-safe pb-4 flex flex-col gap-3">
+    <!-- ═══════════════════════════════════════════════════════════════════
+         PANEL 2 — Face info panel
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="flex-1 min-h-0 flex flex-col bg-gray-950">
 
-      <!-- Station selector (pre-stream) -->
-      <div v-if="!streaming" class="flex flex-col gap-2">
-        <div class="text-white/40 text-xs uppercase tracking-widest">Select Station</div>
+      <!-- Panel header -->
+      <div class="flex items-center justify-between px-4 py-2 border-b border-white/8 shrink-0">
+        <div class="text-xs font-semibold text-white/40 uppercase tracking-widest">
+          {{ streaming ? (displayFaces.length > 0 ? `${displayFaces.length} ใบหน้า` : 'กำลังสแกน…') : 'ผลการสแกน' }}
+        </div>
+        <div class="flex items-center gap-2">
+          <span v-if="frameCount > 0" class="text-white/20 text-xs font-mono">{{ frameCount }} frames</span>
+          <div class="flex items-center gap-1 text-white/25 text-xs">
+            <span class="font-mono">{{ localFps.toFixed(1) }}</span>
+            <span>fps</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Face cards list -->
+      <div class="flex-1 overflow-y-auto overscroll-contain">
+
+        <!-- Empty state — no faces yet -->
+        <div v-if="displayFaces.length === 0"
+          class="flex flex-col items-center justify-center h-full gap-2 text-white/25 py-6">
+          <div class="text-3xl opacity-60">{{ streaming ? '👁️' : '—' }}</div>
+          <div class="text-sm text-center px-6">
+            {{ streaming ? 'ไม่พบใบหน้าในเฟรม' : 'ยังไม่ได้เริ่มสแกน' }}
+          </div>
+        </div>
+
+        <!-- Face card list -->
+        <TransitionGroup
+          name="face-card"
+          tag="div"
+          class="p-3 flex flex-col gap-2"
+        >
+          <div
+            v-for="face in displayFaces"
+            :key="face.tracking_id"
+            class="flex items-center gap-3 px-3 py-2.5 rounded-xl border-l-4 transition-colors"
+            :class="faceCardClass(face)"
+          >
+            <!-- Status icon -->
+            <div class="text-2xl leading-none shrink-0 w-8 text-center">
+              <span v-if="face.status === 'unknown'" class="animate-pulse">⚠️</span>
+              <span v-else-if="face.status === 'spoof'">🚫</span>
+              <span v-else-if="face.attendance_logged">✅</span>
+              <span v-else>🔁</span>
+            </div>
+
+            <!-- Main info -->
+            <div class="flex-1 min-w-0">
+              <div class="font-bold text-white truncate leading-tight"
+                style="font-size: clamp(14px, 3.5vw, 17px)">
+                {{ face.full_name || (face.status === 'spoof' ? 'Spoof detected' : 'Unknown') }}
+              </div>
+              <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span v-if="face.dept_name" class="text-xs text-white/45 truncate max-w-[120px]">
+                  {{ face.dept_name }}
+                </span>
+                <span v-if="face.emp_code" class="text-xs text-white/30 font-mono">
+                  {{ face.emp_code }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Right: status badge + confidence -->
+            <div class="text-right shrink-0 flex flex-col items-end gap-0.5">
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                :class="faceStatusBadgeClass(face)">
+                {{ faceStatusLabel(face) }}
+              </span>
+              <span v-if="face.confidence" class="text-xs text-white/25 font-mono">
+                {{ (face.confidence * 100).toFixed(1) }}%
+              </span>
+            </div>
+          </div>
+        </TransitionGroup>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         PANEL 3 — Controls
+         ════════════════════════════════════════════════════════════════ -->
+    <div class="shrink-0 bg-black/95 border-t border-white/10 px-3 pt-2.5 pb-safe pb-3 flex flex-col gap-2">
+
+      <!-- Station selector (pre-stream only) -->
+      <div v-if="!streaming" class="flex flex-col gap-1.5">
+        <div class="text-white/35 text-xs uppercase tracking-widest">Select Station</div>
         <select v-model="selectedStationId"
           class="select select-bordered w-full text-sm bg-white/5 border-white/20 text-white">
           <option value="" class="text-black">— select a station —</option>
@@ -143,33 +157,27 @@
       </div>
 
       <!-- Controls row -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5">
 
-        <!-- Camera selector
-             · 3+ cameras → dropdown (show all by label)
-             · exactly 2  → flip button (cycle front ↔ back)
-             · 0-1 camera → hidden
-             Both work while streaming (switch on-the-fly, no WS reconnect)
-        -->
+        <!-- Camera selector: dropdown (3+) or flip button (2) -->
         <div class="shrink-0">
-          <!-- Dropdown for 3+ cameras -->
           <select v-if="cameras.length > 2"
             v-model="selectedCameraId"
-            class="select select-sm bg-white/10 border-white/20 text-white text-xs w-36"
-          >
+            class="select select-sm bg-white/10 border-white/20 text-white text-xs w-32">
             <option v-for="(cam, idx) in cameras" :key="cam.deviceId" :value="cam.deviceId"
               class="text-black bg-white">
               {{ cam.label || `Camera ${idx + 1}` }}
             </option>
           </select>
 
-          <!-- Flip button for exactly 2 cameras -->
           <button v-else-if="cameras.length === 2"
             class="btn btn-circle btn-sm btn-ghost"
-            :class="switchingCamera ? 'loading text-white/30' : 'text-white/60'"
+            :class="switchingCamera ? 'loading text-white/30' : 'text-white/55'"
             @click="flipCamera"
-            :title="switchingCamera ? 'Switching…' : 'Flip camera'">
-            <svg v-if="!switchingCamera" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            :disabled="switchingCamera"
+            title="Flip camera">
+            <svg v-if="!switchingCamera" xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
@@ -197,18 +205,6 @@
               d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
           </svg>
         </button>
-
-        <!-- FPS -->
-        <div class="text-right text-white/30 text-xs w-10 shrink-0">
-          <div class="font-mono">{{ localFps.toFixed(1) }}</div>
-          <div class="text-[10px]">fps</div>
-        </div>
-      </div>
-
-      <!-- Status row -->
-      <div class="flex items-center justify-between text-xs text-white/25">
-        <span>{{ frameCount }} frames</span>
-        <span v-if="lastMatchName" class="text-success/60 truncate ml-2">Last: {{ lastMatchName }}</span>
       </div>
     </div>
 
@@ -223,98 +219,40 @@ import api from '@/api/client'
 
 const toast = useToast()
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// ── Stations ──────────────────────────────────────────────────────────────────
 const stations          = ref([])
 const selectedStationId = ref('')
 const selectedStation   = computed(() => stations.value.find(s => s.id === selectedStationId.value))
 
+// ── DOM refs ──────────────────────────────────────────────────────────────────
 const videoEl  = ref(null)
 const canvasEl = ref(null)
 
+// ── Stream state ──────────────────────────────────────────────────────────────
 const streaming      = ref(false)
 const starting       = ref(false)
 const paused         = ref(false)
 const frameCount     = ref(0)
 const localFps       = ref(0)
-const facingMode     = ref('environment')
 const audioEnabled   = ref(true)
 const wakeLockActive = ref(false)
-const lastMatchName  = ref('')
 
 // ── Camera selection ──────────────────────────────────────────────────────────
-const cameras          = ref([])    // MediaDeviceInfo[]
-const selectedCameraId = ref('')    // deviceId ที่เลือก ('' = ใช้ facingMode)
-const switchingCamera  = ref(false) // กำลังสลับกล้อง — แสดง loading ที่ปุ่ม
+const cameras          = ref([])
+const selectedCameraId = ref('')
+const switchingCamera  = ref(false)
 
-let ws              = null
-let mediaStream     = null
-let _frameTimer     = null
-let _fpsTimer       = null
-let _frameCounter   = 0
-let _destroyed      = false
-let _wakeLock       = null
-let _offscreenCanvas = null  // reused across frames — avoids per-frame GPU alloc
+let ws               = null
+let mediaStream      = null
+let _frameTimer      = null
+let _fpsTimer        = null
+let _frameCounter    = 0
+let _destroyed       = false
+let _wakeLock        = null
+let _offscreenCanvas = null
 let _offscreenCtx    = null
-let _bboxCtx         = null  // cached canvas 2D context for bbox overlay
-// Cached frame geometry — recalculated only on resize, not every frame
-let _geo = null  // { sx, sy, sw, sh, SEND_W, SEND_H, displayW, displayH }
-
-// ── Overlay state (HUD result card) ──────────────────────────────────────────
-const overlay = ref({
-  visible:          false,
-  animKey:          0,         // เพิ่มทุกครั้งที่แสดงใหม่ → Vue animate แม้ type เดิม
-  type:             'match',   // 'match' | 'unknown'
-  full_name:        '',
-  dept_name:        '',
-  emp_code:         '',
-  confidence:       0,
-  attendance_logged: false,
-})
-let _overlayTimer = null
-
-// ── Recent results strip ──────────────────────────────────────────────────────
-// แสดงทุกใบหน้าที่ scan ได้ล่าสุด (max 6) เรียง newest-first
-// auto-expire หลัง 10 วินาที
-const recentResults   = ref([])
-let _recentAnimKey    = 0      // monotonic key สำหรับ TransitionGroup
-let _recentCleanTimer = null
-
-function _addRecentResult(face) {
-  // เพิ่ม / อัปเดต entry ของ tracking_id นี้
-  const idx = recentResults.value.findIndex(r => r.tracking_id === face.tracking_id)
-  const entry = {
-    animKey:          ++_recentAnimKey,
-    tracking_id:      face.tracking_id,
-    status:           face.status,
-    full_name:        face.full_name || '',
-    attendance_logged: face.attendance_logged,
-    ts:               Date.now(),
-  }
-  if (idx >= 0) {
-    recentResults.value[idx] = entry   // อัปเดต (เช่น unknown → match)
-  } else {
-    recentResults.value.unshift(entry) // เพิ่มด้านซ้าย (ใหม่สุด)
-    if (recentResults.value.length > 6) recentResults.value.pop()
-  }
-}
-
-function _cleanRecentResults() {
-  const cutoff = Date.now() - 10_000
-  recentResults.value = recentResults.value.filter(r => r.ts >= cutoff)
-}
-
-// ── Per-tracking_id cooldown (prevent beep spam) ──────────────────────────────
-// Map<tracking_id, timestamp_ms> — cooldown 3 s per face
-const _audioCooldown = new Map()
-const AUDIO_COOLDOWN_MS = 3000
-
-// ── Unknown debounce — per face (Map) ────────────────────────────────────────
-// ไม่แสดง "ไม่รู้จัก" ทันที — รอ N frames ติดกันก่อน per tracking_id
-// เหตุผล: frame แรกมักยังจำแนกไม่ได้ ถ้า frame ถัดไป match ได้ → ไม่ควรแสดง red
-// N=2 ที่ 2fps = รอ ~1s ก่อน alert unknown จริง
-// FIX: ใช้ Map แทน global counter — แยก per-face ไม่ให้คนอื่น reset ของกัน
-const _unknownFrames = new Map()  // Map<tracking_id, frameCount>
-const UNKNOWN_HOLD_FRAMES = 2
+let _bboxCtx         = null
+let _geo             = null   // cached frame geometry
 
 // ── WS status ─────────────────────────────────────────────────────────────────
 const wsState = ref('disconnected')
@@ -330,14 +268,94 @@ const wsStatusClass = computed(() => {
   return 'bg-black/50 text-white/40'
 })
 
+// ── Face info panel ───────────────────────────────────────────────────────────
+// displayFaces: sorted list of recently-seen faces
+// Each entry persists FACE_PERSIST_MS after last seen (face doesn't vanish between frames)
+// Sort order: unknown first (security priority) > logged (new) > repeat match
+const displayFaces   = ref([])
+const _faceMap       = new Map()   // tracking_id → {face data + animKey + expiresAt}
+let   _faceAnimKey   = 0
+let   _facePanelTimer = null
+const FACE_PERSIST_MS = 7000       // face stays in panel 7s after last seen
+
+function _updateFacePanel(faces) {
+  const now = Date.now()
+  for (const face of faces) {
+    const existing = _faceMap.get(face.tracking_id)
+    _faceMap.set(face.tracking_id, {
+      ...face,
+      expiresAt: now + FACE_PERSIST_MS,
+      animKey:   existing?.animKey ?? ++_faceAnimKey,
+    })
+  }
+  _rebuildDisplayFaces()
+}
+
+function _cleanFacePanel() {
+  const now = Date.now()
+  let changed = false
+  for (const [tid, entry] of _faceMap) {
+    if (entry.expiresAt < now) { _faceMap.delete(tid); changed = true }
+  }
+  if (changed) _rebuildDisplayFaces()
+}
+
+function _rebuildDisplayFaces() {
+  const entries = [..._faceMap.values()]
+  entries.sort((a, b) => {
+    // unknown = 0 (top, security), logged = 1, repeat = 2
+    const p = f => f.status === 'unknown' || f.status === 'spoof' ? 0
+                 : f.attendance_logged ? 1 : 2
+    return p(a) - p(b)
+  })
+  displayFaces.value = entries
+}
+
+function _clearFacePanel() {
+  _faceMap.clear()
+  displayFaces.value = []
+}
+
+// ── Face card styling helpers ─────────────────────────────────────────────────
+function faceCardClass(face) {
+  if (face.status === 'unknown')            return 'bg-red-950/70 border-red-500'
+  if (face.status === 'spoof')              return 'bg-orange-950/70 border-orange-500'
+  if (face.attendance_logged)               return 'bg-green-950/70 border-green-500'
+  return 'bg-gray-900/70 border-gray-600'
+}
+
+function faceStatusBadgeClass(face) {
+  if (face.status === 'unknown')  return 'bg-red-500/25 text-red-300'
+  if (face.status === 'spoof')    return 'bg-orange-500/25 text-orange-300'
+  if (face.attendance_logged)     return 'bg-green-500/25 text-green-300'
+  return 'bg-white/10 text-white/40'
+}
+
+function faceStatusLabel(face) {
+  if (face.status === 'unknown')  return '⚠️ Unknown'
+  if (face.status === 'spoof')    return '🚫 Spoof'
+  if (face.attendance_logged)     return '✓ Logged'
+  return '🔁 Already logged'
+}
+
+// ── Per-tracking_id audio cooldown (prevents beep spam) ──────────────────────
+const _audioCooldown    = new Map()
+const AUDIO_COOLDOWN_MS = 3000
+
+// ── Unknown debounce — per tracking_id ───────────────────────────────────────
+// Wait N frames of consecutive "unknown" before showing audio alert
+// Prevents false alerts on first-frame detection before recognition completes
+const _unknownFrames   = new Map()   // tracking_id → frame count
+const UNKNOWN_HOLD_FRAMES = 2
+
 // ── Wake Lock ─────────────────────────────────────────────────────────────────
 async function _acquireWakeLock() {
-  if (!('wakeLock' in navigator)) return   // not supported (old iOS)
+  if (!('wakeLock' in navigator)) return
   try {
     _wakeLock = await navigator.wakeLock.request('screen')
     wakeLockActive.value = true
     _wakeLock.addEventListener('release', () => { wakeLockActive.value = false })
-  } catch { /* denied — not critical */ }
+  } catch { /* not critical */ }
 }
 
 async function _releaseWakeLock() {
@@ -345,13 +363,11 @@ async function _releaseWakeLock() {
   wakeLockActive.value = false
 }
 
-// Re-acquire when tab becomes visible again (OS can release it on visibility change)
 function _onVisibilityChange() {
   if (document.visibilityState === 'visible' && streaming.value) _acquireWakeLock()
 }
 
 // ── Audio Engine ──────────────────────────────────────────────────────────────
-// AudioContext must be created after a user gesture (browser security requirement)
 let _audioCtx = null
 
 function _getAudioCtx() {
@@ -363,8 +379,8 @@ function _getAudioCtx() {
 function _beep(freq = 880, duration = 0.12, volume = 0.4) {
   if (!audioEnabled.value) return
   try {
-    const ctx = _getAudioCtx()
-    const osc = ctx.createOscillator()
+    const ctx  = _getAudioCtx()
+    const osc  = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain); gain.connect(ctx.destination)
     osc.frequency.value = freq
@@ -377,18 +393,16 @@ function _beep(freq = 880, duration = 0.12, volume = 0.4) {
 }
 
 function _speak(text) {
-  if (!audioEnabled.value) return
-  if (!window.speechSynthesis) return
+  if (!audioEnabled.value || !window.speechSynthesis) return
   try {
     window.speechSynthesis.cancel()
-    const utt = new SpeechSynthesisUtterance(text)
-    utt.lang = 'th-TH'
-    utt.rate = 1.1
-    utt.volume = 1.0
-    // Try Thai voice, fallback to any available
+    const utt    = new SpeechSynthesisUtterance(text)
+    utt.lang     = 'th-TH'
+    utt.rate     = 1.1
+    utt.volume   = 1.0
     const voices = window.speechSynthesis.getVoices()
-    const thaiVoice = voices.find(v => v.lang.startsWith('th'))
-    if (thaiVoice) utt.voice = thaiVoice
+    const thai   = voices.find(v => v.lang.startsWith('th'))
+    if (thai) utt.voice = thai
     window.speechSynthesis.speak(utt)
   } catch { /* ignore */ }
 }
@@ -399,12 +413,12 @@ function _vibrate(pattern) {
 
 // ── Audio feedback per recognition event ─────────────────────────────────────
 function _handleAudioFeedback(face) {
-  const now = Date.now()
-  const lastPlayed = _audioCooldown.get(face.tracking_id) || 0
-  if (now - lastPlayed < AUDIO_COOLDOWN_MS) return   // cooldown — skip
+  const now      = Date.now()
+  const lastPlay = _audioCooldown.get(face.tracking_id) || 0
+  if (now - lastPlay < AUDIO_COOLDOWN_MS) return
   _audioCooldown.set(face.tracking_id, now)
 
-  // Trim stale entries from audioCooldown Map (prevents unbounded growth in long sessions)
+  // Trim stale entries
   if (_audioCooldown.size > 30) {
     const cutoff = now - AUDIO_COOLDOWN_MS
     for (const [id, ts] of _audioCooldown) {
@@ -414,67 +428,16 @@ function _handleAudioFeedback(face) {
 
   if (face.status === 'match') {
     if (face.attendance_logged) {
-      // First log today — prominent beep + TTS
       _beep(880, 0.12, 0.5)
       setTimeout(() => _speak(face.full_name || 'เข้างานแล้ว'), 100)
     } else {
-      // Already logged (cooldown) — soft acknowledge
-      _beep(660, 0.08, 0.25)
+      _beep(660, 0.08, 0.25)   // already logged — soft ack
     }
   } else if (face.status === 'unknown') {
-    // Unknown — double low beep + vibrate
     _beep(220, 0.35, 0.6)
     setTimeout(() => _beep(220, 0.35, 0.6), 450)
     _vibrate([200, 100, 200])
   }
-}
-
-// ── Result overlay ────────────────────────────────────────────────────────────
-// _pendingOverlay: ถ้า transition กำลัง out → รอก่อน แล้วค่อย show ใหม่
-let _transitioning = false
-let _pendingFace   = null
-
-function _showOverlay(face) {
-  if (_transitioning) {
-    // Queue the latest face — will be applied after current leave finishes
-    _pendingFace = face
-    return
-  }
-  _applyOverlay(face)
-}
-
-function _applyOverlay(face) {
-  if (_overlayTimer) { clearTimeout(_overlayTimer); _overlayTimer = null }
-
-  if (face.status === 'match') {
-    overlay.value = {
-      visible:          true,
-      animKey:          (overlay.value.animKey || 0) + 1,  // force re-animate even same type
-      type:             'match',
-      full_name:         face.full_name || 'Unknown',
-      dept_name:         face.dept_name || '',
-      emp_code:          face.emp_code  || '',
-      confidence:        face.confidence,
-      attendance_logged: face.attendance_logged,
-    }
-    lastMatchName.value = face.full_name || ''
-    _overlayTimer = setTimeout(() => { overlay.value.visible = false }, 2500)
-  } else {
-    overlay.value = {
-      visible:          true,
-      animKey:          (overlay.value.animKey || 0) + 1,
-      type:             'unknown',
-      full_name: '', dept_name: '', emp_code: '', confidence: 0, attendance_logged: false,
-    }
-    _overlayTimer = setTimeout(() => { overlay.value.visible = false }, 4000)
-  }
-}
-
-function _clearOverlay() {
-  if (_overlayTimer) { clearTimeout(_overlayTimer); _overlayTimer = null }
-  _pendingFace   = null
-  _transitioning = false
-  overlay.value.visible = false
 }
 
 // ── Load stations ─────────────────────────────────────────────────────────────
@@ -498,64 +461,47 @@ onUnmounted(() => {
 // ── Camera enumeration ────────────────────────────────────────────────────────
 async function _enumerateCameras() {
   try {
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    cameras.value = devices.filter(d => d.kind === 'videoinput')
+    cameras.value = (await navigator.mediaDevices.enumerateDevices())
+      .filter(d => d.kind === 'videoinput')
   } catch { /* ignore */ }
 }
 
-// ── Camera ────────────────────────────────────────────────────────────────────
+// ── Camera open ───────────────────────────────────────────────────────────────
 async function _openCamera() {
-  // navigator.mediaDevices is undefined on HTTP non-localhost (browser security policy)
-  // Requires HTTPS in production, or Chrome flag on dev:
-  //   chrome://flags/#unsafely-treat-insecure-origin-as-secure → add http://<PC-IP>:5173
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error(
       'Camera not available on HTTP.\n' +
-      'On Android Chrome: go to chrome://flags/#unsafely-treat-insecure-origin-as-secure\n' +
+      'On Android Chrome: chrome://flags/#unsafely-treat-insecure-origin-as-secure\n' +
       'Add http://' + window.location.hostname + ':5173 → Enable → Relaunch'
     )
   }
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
 
-  // ถ้าเลือก deviceId ตรงๆ → ใช้ exact deviceId
-  // ยังไม่ได้เลือก → ใช้ facingMode: environment (กล้องหลัง) เป็นค่าเริ่มต้น
   const videoConstraints = selectedCameraId.value
     ? { deviceId: { exact: selectedCameraId.value }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } }
-    : { facingMode: facingMode.value, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } }
+    : { facingMode: 'environment',                   width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } }
 
-  mediaStream = await navigator.mediaDevices.getUserMedia({
-    video: videoConstraints,
-    audio: false,
-  })
-  // Re-enumerate หลังได้ permission → ได้ label ถูกต้อง
+  mediaStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false })
   await _enumerateCameras()
-  // อัปเดต selectedCameraId ให้ตรงกับกล้องที่ใช้จริง
   const activeId = mediaStream.getVideoTracks()[0]?.getSettings()?.deviceId
   if (activeId) selectedCameraId.value = activeId
   videoEl.value.srcObject = mediaStream
   await new Promise(r => { videoEl.value.onloadedmetadata = r })
 }
 
-// ── Watch camera selection → switch on-the-fly ───────────────────────────────
-// เมื่อผู้ใช้เลือกกล้องใหม่ (dropdown หรือ flip) ขณะ streaming อยู่
-// → สลับกล้องทันทีโดยไม่ต้อง restart WebSocket
+// ── Camera switch (on-the-fly while streaming) ────────────────────────────────
 watch(selectedCameraId, async (newId, oldId) => {
   if (!oldId || newId === oldId || !streaming.value) return
   await _switchCamera()
 })
 
 async function _switchCamera() {
-  if (switchingCamera.value) return   // ป้องกัน double-click
+  if (switchingCamera.value) return
   switchingCamera.value = true
   try {
     _stopFrameLoop()
-    // หยุดเฉพาะ media stream — WebSocket ยังเปิดอยู่
-    if (mediaStream) {
-      mediaStream.getTracks().forEach(t => t.stop())
-      mediaStream = null
-    }
+    if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
     if (videoEl.value) videoEl.value.srcObject = null
-    // เปิดกล้องใหม่ด้วย selectedCameraId ที่เปลี่ยนไป
     await _openCamera()
     _startFrameLoop(2)
   } catch (e) {
@@ -566,22 +512,16 @@ async function _switchCamera() {
   }
 }
 
-// ── Flip camera (cycle through cameras list) ─────────────────────────────────
-// สำหรับโทรศัพท์ที่มี 2 กล้อง: toggle กล้องหน้า ↔ กล้องหลัง
 function flipCamera() {
   if (cameras.value.length < 2 || switchingCamera.value) return
-  const currentIdx = cameras.value.findIndex(c => c.deviceId === selectedCameraId.value)
-  const nextIdx    = (currentIdx + 1) % cameras.value.length
-  selectedCameraId.value = cameras.value[nextIdx].deviceId
-  // watch(selectedCameraId) จะ trigger _switchCamera() อัตโนมัติถ้า streaming อยู่
+  const idx  = cameras.value.findIndex(c => c.deviceId === selectedCameraId.value)
+  const next = (idx + 1) % cameras.value.length
+  selectedCameraId.value = cameras.value[next].deviceId
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function _connectWS(stationId) {
   const token   = localStorage.getItem(TOKEN_KEY)
-  // ใช้ same origin (host:port) เหมือน frontend — ผ่าน Vite proxy
-  // wss://192.168.1.170:5173/api/... → proxy → ws://127.0.0.1:8000/api/...
-  // backend ไม่ต้องรู้จัก TLS เลย
   const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const url     = `${wsProto}://${window.location.host}/api/v1/ws/scan/${stationId}?token=${token}`
   wsState.value = 'connecting'
@@ -605,48 +545,30 @@ function _connectWS(stationId) {
       // Recognition result
       const faces = data.faces || []
       drawBBoxes(faces)
+      _updateFacePanel(faces)
 
       if (faces.length === 0) {
-        // ไม่มีใบหน้าในเฟรม — clear unknown counters + unknown overlay
         _unknownFrames.clear()
-        if (overlay.value.type === 'unknown') _clearOverlay()
         return
       }
 
-      // ── แยกกลุ่ม ──────────────────────────────────────────────────────────
+      // Unknown debounce — per tracking_id
+      const newCheckIns = faces.filter(f => f.status === 'match' && f.attendance_logged)
       const unknownFaces = faces.filter(f => f.status === 'unknown')
-      const newCheckIns  = faces.filter(f => f.status === 'match' && f.attendance_logged)
-      const repeatMatch  = faces.filter(f => f.status === 'match' && !f.attendance_logged)
 
-      // ── Audio & Recent strip — ทำทุกใบหน้า ─────────────────────────────
+      for (const mf of newCheckIns) _unknownFrames.delete(mf.tracking_id)
+
+      // Audio feedback for all faces
       faces.forEach(face => {
-        _handleAudioFeedback(face)
-        _addRecentResult(face)
-      })
-
-      // ── Unknown debounce — per tracking_id (FIX Bug 4) ─────────────────
-      // นับ frame ที่ unknown ต่อเนื่องต่อคน — reset ทันทีถ้า match แล้ว
-      for (const mf of [...newCheckIns, ...repeatMatch]) {
-        _unknownFrames.delete(mf.tracking_id)  // match แล้ว → clear counter
-      }
-      let confirmedUnknown = null
-      for (const uf of unknownFaces) {
-        const cnt = (_unknownFrames.get(uf.tracking_id) || 0) + 1
-        _unknownFrames.set(uf.tracking_id, cnt)
-        if (cnt >= UNKNOWN_HOLD_FRAMES && !confirmedUnknown) {
-          confirmedUnknown = uf  // เอาคนแรกที่ผ่าน threshold
+        // For unknown faces, only fire audio after UNKNOWN_HOLD_FRAMES frames
+        if (face.status === 'unknown') {
+          const cnt = (_unknownFrames.get(face.tracking_id) || 0) + 1
+          _unknownFrames.set(face.tracking_id, cnt)
+          if (cnt >= UNKNOWN_HOLD_FRAMES) _handleAudioFeedback(face)
+        } else {
+          _handleAudioFeedback(face)
         }
-      }
-
-      // ── Center overlay priority: unknown > new check-in > ไม่แสดง ──────
-      // FIX Bug 5: unknown ต้องชนะ match เสมอ (security)
-      if (confirmedUnknown) {
-        _showOverlay(confirmedUnknown)
-      } else if (newCheckIns.length > 0) {
-        // แสดงคนแรกที่ logged จริง (ใหม่วันนี้) — คนอื่นอยู่ใน strip แล้ว
-        _showOverlay(newCheckIns[0])
-      }
-      // repeatMatch เท่านั้น → ไม่แสดง overlay (audio beep เบาๆ พอ, strip แสดงอยู่)
+      })
 
     } catch { /* ignore malformed */ }
   }
@@ -670,19 +592,15 @@ function _startFrameLoop(fps = 2) {
   _stopFrameLoop()
   _frameTimer = setInterval(_sendFrame, Math.max(33, Math.round(1000 / fps)))
 }
+
 function _stopFrameLoop() {
   if (_frameTimer) { clearInterval(_frameTimer); _frameTimer = null }
 }
 
 /**
- * Capture the EXACT portion of the video that is visible on screen.
- *
- * The video uses object-fit:cover → part of the native frame is cropped.
- * We reproduce the same crop in an offscreen canvas so that:
- *   - backend gets the same image the user sees
- *   - bbox coordinates map 1-to-1 back to screen pixels
- *
- * Sent frame size: SEND_W × SEND_H = 640 × (640 * clientH / clientW)
+ * Capture the exact visible portion of the video (object-fit:cover aware).
+ * Sends a 640×N crop that matches what the user sees — bbox coordinates
+ * from the backend map 1-to-1 back to screen pixels.
  */
 function _computeGeo(video) {
   const displayW  = video.clientWidth  || 640
@@ -707,14 +625,13 @@ function _sendFrame() {
   const video = videoEl.value
   if (!video || !video.videoWidth) return
 
-  // Recompute geometry only when video/display size changes
-  if (!_geo || _geo.displayW !== video.clientWidth || _geo.displayH !== video.clientHeight
-            || _geo._videoW !== video.videoWidth   || _geo._videoH !== video.videoHeight) {
+  if (!_geo
+    || _geo.displayW !== video.clientWidth  || _geo.displayH !== video.clientHeight
+    || _geo._videoW  !== video.videoWidth   || _geo._videoH  !== video.videoHeight) {
     _geo = { ..._computeGeo(video), _videoW: video.videoWidth, _videoH: video.videoHeight }
   }
   const { sx, sy, sw, sh, SEND_W, SEND_H } = _geo
 
-  // Reuse offscreen canvas — creating a new one every frame leaks GPU memory
   if (!_offscreenCanvas) {
     _offscreenCanvas = document.createElement('canvas')
     _offscreenCtx    = _offscreenCanvas.getContext('2d')
@@ -725,7 +642,6 @@ function _sendFrame() {
   }
   _offscreenCtx.drawImage(video, sx, sy, sw, sh, 0, 0, SEND_W, SEND_H)
 
-  // Send Blob directly — no arrayBuffer() conversion needed, saves one async hop
   _offscreenCanvas.toBlob((blob) => {
     if (!blob || !ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(blob)
@@ -736,10 +652,9 @@ function _sendFrame() {
 
 // ── BBox overlay ──────────────────────────────────────────────────────────────
 /**
- * Scale bbox from sent-frame coordinates → screen pixels.
- * Sent frame = 640 × (640 * clientH / clientW)  ← same ratio as screen
- * So scaleX = clientW / 640,  scaleY = clientH / SEND_H
- * No offset needed because sent frame covers the full screen (no letterbox).
+ * Draw colored bounding boxes on the camera feed.
+ * Also draws a small name label below each box so the operator can
+ * glance at the camera and know who's who without reading the panel.
  */
 function drawBBoxes(faces) {
   const canvas = canvasEl.value
@@ -748,7 +663,7 @@ function drawBBoxes(faces) {
 
   const displayW = video.clientWidth  || 640
   const displayH = video.clientHeight || 480
-  if (canvas.width !== displayW)  canvas.width  = displayW
+  if (canvas.width  !== displayW) canvas.width  = displayW
   if (canvas.height !== displayH) canvas.height = displayH
 
   const SEND_W = 640
@@ -762,9 +677,50 @@ function drawBBoxes(faces) {
 
   for (const face of faces) {
     const { x, y, w, h } = face.bbox
-    ctx.strokeStyle = face.status === 'match' ? '#22c55e' : '#ef4444'
+    const sx = x * scaleX, sy = y * scaleY, sw = w * scaleX, sh = h * scaleY
+
+    const color = face.status === 'match' ? '#22c55e'
+                : face.status === 'spoof' ? '#f97316'
+                : '#ef4444'
+
+    // Box
+    ctx.strokeStyle = color
     ctx.lineWidth   = 3
-    ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY)
+    ctx.strokeRect(sx, sy, sw, sh)
+
+    // Corner accent (top-left + bottom-right)
+    const cs = Math.min(sw, sh) * 0.2
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.moveTo(sx, sy + cs); ctx.lineTo(sx, sy); ctx.lineTo(sx + cs, sy)
+    ctx.moveTo(sx + sw - cs, sy + sh); ctx.lineTo(sx + sw, sy + sh); ctx.lineTo(sx + sw, sy + sh - cs)
+    ctx.stroke()
+
+    // Name tag below box (first name only for readability)
+    if (face.status === 'match' && face.full_name) {
+      const label    = face.full_name.split(' ')[0]
+      const tagH     = 20
+      const tagY     = sy + sh + 2
+      const tagPad   = 6
+      ctx.font       = 'bold 12px system-ui, sans-serif'
+      const textW    = ctx.measureText(label).width
+      const tagW     = textW + tagPad * 2
+      const tagX     = sx + (sw - tagW) / 2
+
+      // Background pill
+      ctx.fillStyle = 'rgba(0,0,0,0.72)'
+      ctx.beginPath()
+      ctx.roundRect(tagX, tagY, tagW, tagH, 4)
+      ctx.fill()
+
+      // Text
+      ctx.fillStyle   = color
+      ctx.textAlign   = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(label, tagX + tagW / 2, tagY + tagH / 2)
+      ctx.textAlign    = 'start'
+      ctx.textBaseline = 'alphabetic'
+    }
   }
 }
 
@@ -774,16 +730,15 @@ async function startStream() {
   starting.value = true
   try {
     await _openCamera()
-    // Init AudioContext on user gesture (required by browsers)
-    _getAudioCtx()
+    _getAudioCtx()                          // init on user gesture
     _connectWS(selectedStationId.value)
     await _acquireWakeLock()
     streaming.value  = true
     paused.value     = false
     frameCount.value = 0
     _startFrameLoop(2)
-    _fpsTimer         = setInterval(() => { localFps.value = _frameCounter; _frameCounter = 0 }, 1000)
-    _recentCleanTimer = setInterval(_cleanRecentResults, 2000)  // ล้าง chip เก่าทุก 2s
+    _fpsTimer        = setInterval(() => { localFps.value = _frameCounter; _frameCounter = 0 }, 1000)
+    _facePanelTimer  = setInterval(_cleanFacePanel, 1000)   // expire old face cards
   } catch (e) {
     toast.error('Camera error: ' + (e.message || e))
   } finally {
@@ -795,16 +750,15 @@ function stopStream() {
   streaming.value       = false
   paused.value          = false
   switchingCamera.value = false
-  _clearOverlay()
   _stopFrameLoop()
   _releaseWakeLock()
-  if (_fpsTimer)         { clearInterval(_fpsTimer);         _fpsTimer = null }
-  if (_recentCleanTimer) { clearInterval(_recentCleanTimer); _recentCleanTimer = null }
-  recentResults.value = []
-  if (ws)           { ws.close(); ws = null }
-  if (mediaStream)  { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
+  _clearFacePanel()
+  if (_fpsTimer)       { clearInterval(_fpsTimer);       _fpsTimer = null }
+  if (_facePanelTimer) { clearInterval(_facePanelTimer); _facePanelTimer = null }
+  if (ws)          { ws.close(); ws = null }
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
   if (videoEl.value) videoEl.value.srcObject = null
-  _offscreenCanvas = null   // release GPU memory on stop
+  _offscreenCanvas = null
   _offscreenCtx    = null
   _bboxCtx         = null
   _geo             = null
@@ -817,24 +771,18 @@ function stopStream() {
 </script>
 
 <style scoped>
-/* Result overlay pop animation */
-.result-pop-enter-active { transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.result-pop-leave-active { transition: all 0.25s ease-in; }
-.result-pop-enter-from   { opacity: 0; transform: translateY(-50%) scale(0.85); }
-.result-pop-leave-to     { opacity: 0; transform: translateY(-50%) scale(0.92); }
-
-/* Paused overlay */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
 /* iOS safe area */
-.pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0.75rem); }
 .pt-safe { padding-top:    env(safe-area-inset-top,    0px); }
 
-/* Recent result chips */
-.chip-enter-active { transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1); }
-.chip-leave-active { transition: all 0.2s ease-in; }
-.chip-enter-from   { opacity: 0; transform: scale(0.7) translateY(6px); }
-.chip-leave-to     { opacity: 0; transform: scale(0.8); }
-.chip-move         { transition: transform 0.25s ease; }
+/* Face card enter/leave transitions */
+.face-card-enter-active { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.face-card-leave-active { transition: all 0.2s ease-in; }
+.face-card-enter-from   { opacity: 0; transform: translateX(-12px) scale(0.96); }
+.face-card-leave-to     { opacity: 0; transform: translateX(8px) scale(0.97); }
+.face-card-move         { transition: transform 0.3s ease; }
+
+/* Generic fade */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
