@@ -16,8 +16,8 @@ build/
 *.egg
 
 # Environment variables
-.env
-backend/.env
+# backend/.env is intentionally committed (localhost defaults only, no real secrets)
+# Production secrets go in .env.prod (never commit)
 
 # Storage / uploaded files
 storage/
