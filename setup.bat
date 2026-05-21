@@ -141,6 +141,7 @@ echo.
 echo   Then open:
 echo     Frontend  →  http://localhost:5173
 echo     API Docs  →  http://localhost:8000/docs
+echo     Grafana   →  http://localhost:3000  (admin / admin)
 echo.
 echo   Default login:
 echo     Username: admin

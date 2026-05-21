@@ -125,6 +125,20 @@ Phase 5 — Production     █████████████████�
 
 ---
 
+## Mobile Scan Architecture (Sprint 20b — ✅ DONE)
+
+| Component | รายละเอียด |
+|-----------|-----------|
+| Layout | 3-panel: 50vh camera / flex event feed / fixed controls |
+| Event feed | `_faceMap` Map 7s TTL — แสดงเฉพาะ `attendance_logged===true` หรือ `status==='spoof'` |
+| Audio cooldown | fresh check-in 5s / repeat match 60s / spoof+unknown 5s |
+| Backpressure | `_waitingResponse` flag — ไม่ส่ง frame ถัดไปจนกว่า backend จะตอบ |
+| Frame timeout | 2500ms safety net — clear bbox + unblock ถ้า backend ไม่ตอบ |
+| Stale bbox | `_clearBBoxCanvas()` เรียกใน `ws.onclose` — clean state ทุกครั้ง reconnect |
+| Recognition cache TTL | `recognition_cache_ttl` setting (5–300s, default 30s) — reuse Qdrant result ต่อ tracking_id |
+
+---
+
 ## Performance Architecture (Sprint 15b–15c — ✅ DONE)
 
 | Component | รายละเอียด |
@@ -209,9 +223,9 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 ## งานที่ต้องทำถัดไป (Sprint 21+)
 
 ### ลำดับความสำคัญ
-1. 🟢 **Grafana dashboard** — visualize Prometheus metrics จาก `GET /metrics`
-2. 🟢 **Cron backup** — automatic daily backup scheduler
-3. 🟢 **Phase 5** — Production 85% → 100% (Grafana เป็น optional)
+1. 🔄 **Grafana dashboard** — IN PROGRESS: Prometheus + Grafana ใน docker-compose + pre-built OmniSight dashboard
+2. 🟢 **Export รายงาน PDF** — HR ต้องการ attendance report ดาวน์โหลดได้
+3. 🟢 **Unit tests** — ทีมจะมาช่วย — ต้องมี test ป้องกัน regression
 
 ---
 
@@ -240,9 +254,10 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 - Repository: https://github.com/idev006/OmniSight
 - Branch: master
-- Latest push: Sprint 17 (`f813943`)
-- Sprint 18 docs: **ยังไม่ได้ push** (รอ approval)
-- .gitignore excludes: `my_env/`, `.env`, `storage/`, `frontend/node_modules/`, `models/`, `data/`, `backups/`
+- Latest push: Sprint 20c (`98b52c6`) — team setup + README rewrite
+- All sprints through Sprint 20c: **pushed ✅**
+- .gitignore excludes: `my_env/`, `storage/`, `frontend/node_modules/`, `models/`, `data/`, `backups/`
+- `backend/.env` is now **tracked** (localhost defaults only — no real secrets)
 
 > **⚠️ ห้าม push GitHub โดยไม่ขออนุญาต user ก่อนทุกครั้ง**
 
@@ -264,4 +279,4 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-20 (Sprint 20 — 2-phase multi-face pipeline redesign, settings validation, offline banner, Mobile Recent Results Strip)*
+*อัพเดทล่าสุด: 2026-05-21 (Sprint 20b/20c — Mobile Scan UX overhaul, recognition cache TTL, team onboarding setup.bat)*

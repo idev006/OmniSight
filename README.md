@@ -52,6 +52,8 @@ start-dev.bat
 | 🖥️ Frontend | http://localhost:5173 |
 | 📖 API Docs (Swagger) | http://localhost:8000/docs |
 | 📊 Qdrant Dashboard | http://localhost:6333/dashboard |
+| 📈 Grafana Dashboard | http://localhost:3000 (admin / admin) |
+| 🔬 Prometheus | http://localhost:9090 |
 
 **Default login:** `admin` / `admin`
 

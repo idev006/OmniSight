@@ -304,15 +304,40 @@ Phase 5 — Production     █████████████████�
 | S20.4 | Employee lookup: N concurrent queries → `WHERE id IN (...)` (1 round-trip, thread-safe) | ✅ Done | 2026-05-20 |
 | S20.5 | Sync disk write → `run_in_executor(None, write_bytes, data)` | ✅ Done | 2026-05-20 |
 
+### Sprint 20b — Mobile Scan UX Overhaul + Recognition Cache TTL ✅ DONE
+**วันที่:** 2026-05-20–21
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S20b.1 | MobileScanView.vue — 3-panel layout redesign (wireframe-based) | ✅ Done | 2026-05-21 |
+| S20b.2 | Event feed pattern — panel shows only logged/spoof (ตัด Unknown ออก) | ✅ Done | 2026-05-21 |
+| S20b.3 | Audio cooldown — fresh 5s / repeat 60s / alert 5s | ✅ Done | 2026-05-21 |
+| S20b.4 | Backpressure gate — `_waitingResponse` flag + 2500ms auto-clear timeout | ✅ Done | 2026-05-21 |
+| S20b.5 | `_clearBBoxCanvas()` on WS disconnect — no stale bbox on reconnect | ✅ Done | 2026-05-21 |
+| S20b.6 | fps display hidden when WS not open (`v-if="wsState === 'open'"`) | ✅ Done | 2026-05-21 |
+| S20b.7 | `recognition_cache_ttl` setting — configurable tracker cache (5–300s, default 30s) | ✅ Done | 2026-05-21 |
+| S20b.8 | `tracker.get_cached_result(tid, ttl=cache_ttl)` — TTL read from Redis live | ✅ Done | 2026-05-21 |
+
+### Sprint 20c — Team Setup (Magic Onboarding) ✅ DONE
+**วันที่:** 2026-05-21
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S20c.1 | `setup.bat` — one-click first-time setup (5 steps, full error handling) | ✅ Done | 2026-05-21 |
+| S20c.2 | `backend/.env` — committed to git (localhost dev defaults, no real secrets) | ✅ Done | 2026-05-21 |
+| S20c.3 | `.gitignore` — unblock backend/.env tracking | ✅ Done | 2026-05-21 |
+| S20c.4 | `README.md` — complete rewrite: 4-step quick start, troubleshooting, team workflow | ✅ Done | 2026-05-21 |
+
 ### Remaining Production Work
 | # | งาน | สถานะ | Priority |
 |---|-----|--------|----------|
 | 5.3 | Logging & monitoring | ✅ Done (Sprint 15) | — |
 | 5.5 | Performance test (10 cameras) | ✅ Done (Sprint 15d) | — |
 | 5.9 | rtsp_agent Dockerfile | ✅ Done (Sprint 15) | — |
-| 5.10 | Grafana dashboard (visualize Prometheus metrics) | ⬜ Todo | 🟢 LOW |
+| 5.10 | Grafana dashboard (visualize Prometheus metrics) | 🔄 In Progress (Sprint 21) | 🟢 LOW |
 | 5.11 | System Info admin dashboard | ✅ Done (Sprint 19) | — |
 | 5.12 | 2-phase multi-face pipeline | ✅ Done (Sprint 20) | — |
+| 5.13 | Team onboarding (setup.bat + README) | ✅ Done (Sprint 20c) | — |
 
 ---
 

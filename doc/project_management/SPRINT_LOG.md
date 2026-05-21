@@ -1430,3 +1430,121 @@ Frame arrives
 
 ### Commit
 - `26ce1b6` — Sprint 20: 2-phase multi-face pipeline redesign
+
+---
+
+## Sprint 20b — Mobile Scan UX Overhaul + Recognition Cache TTL ✅ DONE
+**วันที่:** 2026-05-20–21  
+**เป้าหมาย:** แก้ปัญหา UX บน MobileScanView หลายอย่างที่พบจากการใช้งานจริง
+
+### ปัญหาที่พบ (จากการทดสอบจริง)
+
+| ปัญหา | ผลกระทบ |
+|-------|---------|
+| Panel แสดง Unknown face ทำให้รก | ข้อมูลสำคัญถูกฝังอยู่ใน noise |
+| 10 คนยืนแช่ → panel เต็ม + audio spam | UX แย่มาก |
+| หันกล้องไปทางอื่นหลังสแกน 10 คน → lag + bbox ค้าง | backlog frame queue |
+| Bbox ค้างตอน WS reconnect | stale visual state |
+| fps แสดง "0.0 fps" ตอน reconnect | confusing |
+
+### วิธีแก้
+
+#### 1. `frontend/src/views/MobileScanView.vue` — Complete Redesign
+- **3-panel layout** ตาม wireframe: 50vh camera / flex info panel / fixed controls
+- **Event feed pattern**: `_faceMap` Map ด้วย 7s TTL — แสดงเฉพาะ `attendance_logged===true` หรือ `status==='spoof'` (ตัด Unknown ออก)
+- **Audio cooldown**: fresh check-in 5s, repeat match 60s, alert (spoof/unknown) 5s
+- **Backpressure gate**: `_waitingResponse` flag — ไม่ส่ง frame ถัดไปจนกว่าจะได้รับผลจาก backend
+- **Frame timeout**: `FRAME_TIMEOUT_MS = 2500` — ถ้า 2.5s ไม่มีตอบ → clear canvas + unblock
+- **`_clearBBoxCanvas()`** เรียกใน `ws.onclose` (ลบ stale bbox ตอน reconnect)
+- **fps display**: `v-if="wsState === 'open'"` (ซ่อนตอน reconnect)
+- **Corner accent bbox**: เส้น accent ที่มุม + label ชื่อใต้ bbox
+
+```javascript
+// Backpressure pattern
+let _waitingResponse   = false
+let _frameTimeoutTimer = null
+const FRAME_TIMEOUT_MS = 2500
+
+// ใน _sendFrame()
+if (_waitingResponse) return
+// ...หลัง ws.send(blob):
+_waitingResponse = true
+_frameTimeoutTimer = setTimeout(() => {
+  _waitingResponse = false
+  _clearBBoxCanvas()
+}, FRAME_TIMEOUT_MS)
+
+// ใน ws.onmessage:
+_waitingResponse = false
+clearTimeout(_frameTimeoutTimer)
+```
+
+#### 2. `backend/app/core/tracker.py` — Configurable Cache TTL
+```python
+def get_cached_result(self, track_id: int, ttl: float = RESULT_CACHE_S) -> "FaceResult | None":
+    track = self._tracks.get(track_id)
+    if track and track.result is not None:
+        if time.monotonic() - track.result_time < ttl:
+            return track.result
+    return None
+```
+
+#### 3. `backend/app/api/websocket.py` — Recognition Cache TTL from Settings
+- เพิ่ม `recognition_cache_ttl` ใน `_get_frame_settings()` อ่านจาก Redis
+- Pass TTL ไปยัง `tracker.get_cached_result(tid, ttl=cache_ttl)`
+
+#### 4. `backend/app/api/settings.py`
+- เพิ่ม `"recognition_cache_ttl": ("int", 5, 300)` ใน `_VALIDATORS`
+- เพิ่ม `"recognition_cache_ttl": "live"` ใน `LIVENESS`
+
+#### 5. `frontend/src/views/SettingsView.vue` + `backend/main.py`
+- เพิ่ม `recognition_cache_ttl` ใน Performance group + DEFAULT_SETTINGS seed (30s)
+
+### ผลลัพธ์
+| ปัญหา | วิธีแก้ | ผล |
+|-------|---------|-----|
+| Unknown รก | Filter panel เฉพาะ logged/spoof | Panel สะอาด ✅ |
+| 10 คนยืนแช่ | Cache TTL 30s + audio cooldown 60s | Qdrant calls ลด ~93% ✅ |
+| Lag หลังสแกน 10 คน | Backpressure gate + 2.5s timeout | ไม่มี queue buildup ✅ |
+| Bbox ค้าง WS reconnect | `_clearBBoxCanvas()` ใน onclose | Clear ทันที ✅ |
+| "0.0 fps" reconnect | `v-if="wsState === 'open'"` | ซ่อนขณะ reconnect ✅ |
+
+### Commits
+- `93c90d6` — feat: configurable recognition cache TTL
+- `d12da52` — fix(mobile-scan): clear stale bboxes on WS disconnect + hide fps when reconnecting
+- `447b84a` — feat(settings-ui): add recognition_cache_ttl to Performance tab
+- `a1b5e72` — fix: add recognition_cache_ttl to DEFAULT_SETTINGS seed
+- `a6766e5` — fix(mobile-scan): fix 10-people-standing-still problem
+- `250670d` — fix(mobile-scan): hide unknown faces from info panel
+- `39bdf2a` — feat(mobile-scan): redesign to 3-panel layout per wireframe
+- `46b64bb` — fix(mobile-scan): backpressure + auto-clear bbox to prevent lag after 10-face scan
+
+---
+
+## Sprint 20c — Team Setup (Magic Onboarding) ✅ DONE
+**วันที่:** 2026-05-21  
+**เป้าหมาย:** ทีมใหม่ clone แล้วพัฒนาได้ใน 10 นาที โดยไม่ต้องถามขั้นตอน
+
+### สิ่งที่ทำ
+
+#### 1. `setup.bat` (NEW)
+- Script 5 ขั้นตอน: prerequisite check → venv → pip install → docker up + migrate → npm install
+- Error handling ทุก step — exit พร้อม message ชัดเจน
+- แสดง default login credentials + URLs เมื่อสำเร็จ
+
+#### 2. `backend/.env` (ตอนนี้ tracked ใน git)
+- Dev defaults ครบ — ไม่มี secret จริง (localhost passwords)
+- ทีมไม่ต้องสร้าง `.env` เอง
+
+#### 3. `.gitignore`
+- Uncomment `backend/.env` จาก exclusion list
+
+#### 4. `README.md` (Complete Rewrite)
+- 4-step Quick Start (clone → prerequisites → `setup.bat` → `start-dev.bat`)
+- Project structure, tech stack, common commands, team workflow, troubleshooting section
+
+### ผลลัพธ์
+จาก **"อ่าน README 30 นาทีแล้วยังไม่รู้จะเริ่มยังไง"** → `setup.bat` แล้วรอ 10 นาที ready
+
+### Commit
+- `98b52c6` — chore: magic one-click setup for team members
