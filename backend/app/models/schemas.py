@@ -45,6 +45,12 @@ class EmployeeOut(BaseModel):
     is_enrollment_complete: bool = False
     model_config = {"from_attributes": True}
 
+class EmployeePage(BaseModel):
+    items: list[EmployeeOut]
+    total: int
+    page: int
+    page_size: int
+
 
 # --- Station ---
 class StationCreate(BaseModel):

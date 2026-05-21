@@ -16,8 +16,8 @@
 
     <DataTable
       :columns="columns"
-      :rows="pageRows"
-      :total="filtered.length"
+      :rows="employees"
+      :total="total"
       :loading="loading"
       v-model:page="page"
       v-model:page-size="pageSize"
@@ -112,7 +112,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/api/client'
 import { useToast } from '@/composables/useToast'
@@ -123,6 +123,7 @@ const toast  = useToast()
 
 const employees   = ref([])
 const departments = ref([])
+const total       = ref(0)
 const loading     = ref(false)
 const saving      = ref(false)
 const modal       = ref(null)
@@ -149,26 +150,6 @@ const actions = [
   },
 ]
 
-const filtered = computed(() => {
-  let list = employees.value
-  const q = search.value.toLowerCase().trim()
-  if (q) {
-    list = list.filter(e =>
-      e.full_name.toLowerCase().includes(q) ||
-      e.emp_code.toLowerCase().includes(q)
-    )
-  }
-  if (filterDept.value) {
-    list = list.filter(e => e.dept_id === filterDept.value)
-  }
-  return list
-})
-
-const pageRows = computed(() => {
-  const from = (page.value - 1) * pageSize.value
-  return filtered.value.slice(from, from + pageSize.value)
-})
-
 function deptName(id) {
   return departments.value.find(d => d.id === id)?.name || '—'
 }
@@ -184,7 +165,8 @@ async function createEmployee() {
     await api.post('/api/v1/employees', form.value)
     modal.value.close()
     toast.success(`Employee "${form.value.full_name}" added`)
-    await load()
+    page.value = 1
+    await loadEmployees()
   } catch (e) {
     toast.error(e.response?.data?.detail || 'Failed to create employee')
   } finally {
@@ -193,18 +175,42 @@ async function createEmployee() {
 }
 
 async function load() {
+  await Promise.all([
+    loadEmployees(),
+    loadDepartments(),
+  ])
+}
+
+async function loadEmployees() {
   loading.value = true
   try {
-    const [empRes, deptRes] = await Promise.all([
-      api.get('/api/v1/employees'),
-      api.get('/api/v1/departments'),
-    ])
-    employees.value   = empRes.data
-    departments.value = deptRes.data
+    const params = {
+      page: page.value,
+      page_size: pageSize.value,
+    }
+    const q = search.value.trim()
+    if (q) params.search = q
+    if (filterDept.value) params.dept_id = filterDept.value
+
+    const { data } = await api.get('/api/v1/employees/page', { params })
+    employees.value = data.items
+    total.value = data.total
   } finally {
     loading.value = false
   }
 }
+
+async function loadDepartments() {
+  const { data } = await api.get('/api/v1/departments')
+  departments.value = data
+}
+
+watch([page, pageSize, search], loadEmployees)
+
+watch(filterDept, () => {
+  page.value = 1
+  loadEmployees()
+})
 
 onMounted(load)
 </script>
