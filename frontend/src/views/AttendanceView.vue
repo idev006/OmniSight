@@ -29,27 +29,51 @@
         </svg>
         Export CSV
       </button>
-      <button
-        v-else-if="activeTab === 'summary'"
-        class="btn btn-ghost btn-sm gap-2"
-        @click="exportSummaryCSV"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-4 w-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+      <div v-else-if="activeTab === 'summary'" class="flex gap-2">
+        <button class="btn btn-ghost btn-sm gap-2" @click="exportSummaryCSV">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+            />
+          </svg>
+          CSV
+        </button>
+        <button
+          class="btn btn-primary btn-sm gap-2"
+          :disabled="monthlyPdfLoading"
+          @click="exportMonthlyPDF"
         >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-          />
-        </svg>
-        Export Report CSV
-      </button>
+          <svg
+            v-if="!monthlyPdfLoading"
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+            />
+          </svg>
+          <span
+            v-if="monthlyPdfLoading"
+            class="loading loading-spinner loading-xs"
+          ></span>
+          Export PDF
+        </button>
+      </div>
       <div v-else class="flex gap-2">
         <button class="btn btn-ghost btn-sm gap-2" @click="exportDailyCSV">
           <svg
@@ -830,6 +854,35 @@ function exportSummaryCSV() {
     `attendance_summary_${summary.value.month}.csv`,
   );
   toast.success("Summary CSV exported");
+}
+
+// ── Monthly Report tab ───────────────────────────────────────────────────────
+const monthlyPdfLoading = ref(false);
+
+async function exportMonthlyPDF() {
+  monthlyPdfLoading.value = true;
+  try {
+    const params = {};
+    if (summaryMonth.value) params.month = summaryMonth.value;
+    if (summaryDept.value) params.dept_id = summaryDept.value;
+    const response = await api.get("/api/v1/attendance/summary/pdf", {
+      params,
+      responseType: "blob",
+    });
+    const blob = new Blob([response.data], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const filename = `attendance_monthly_${summaryMonth.value || new Date().toISOString().slice(0, 7)}.pdf`;
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Monthly PDF exported");
+  } catch {
+    toast.error("PDF export failed");
+  } finally {
+    monthlyPdfLoading.value = false;
+  }
 }
 
 // ── Daily Status tab ─────────────────────────────────────────────────────────

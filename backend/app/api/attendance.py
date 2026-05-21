@@ -414,6 +414,9 @@ def _build_daily_report_pdf(
     """
     Build the daily attendance report as a PDF byte string using ReportLab.
 
+    Thai text support: Leelawadee TTF (bundled in app/assets/fonts/).
+    Falls back to Helvetica if font missing (Thai chars will render as boxes).
+
     Layout:
     - Header: title + date + late threshold
     - Summary box: total / present / late / absent
@@ -422,11 +425,16 @@ def _build_daily_report_pdf(
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import cm
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"reportlab not installed: {e}") from e
+
+    from app.core.pdf_utils import BODY_SIZE, HEADER_SIZE, TITLE_SIZE, get_font, get_font_bold
+
+    font = get_font()
+    font_bold = get_font_bold()
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -439,6 +447,20 @@ def _build_daily_report_pdf(
     )
     styles = getSampleStyleSheet()
 
+    title_style = ParagraphStyle(
+        "OmniTitle",
+        parent=styles["Title"],
+        fontName=font_bold,
+        fontSize=TITLE_SIZE,
+        leading=TITLE_SIZE * 1.4,
+    )
+    body_style = ParagraphStyle(
+        "OmniBody",
+        parent=styles["Normal"],
+        fontName=font,
+        fontSize=BODY_SIZE,
+    )
+
     # ── Status colour map ─────────────────────────────────────────────────────
     STATUS_COLOR = {
         "PRESENT": colors.HexColor("#22c55e"),  # green-500
@@ -449,12 +471,14 @@ def _build_daily_report_pdf(
     story = []
 
     # ── Title ─────────────────────────────────────────────────────────────────
-    title = Paragraph(
-        f"<b>OmniSight — Daily Attendance Report</b><br/>"
-        f"Date: {target_date}  |  Late threshold: {late_threshold} min",
-        styles["Title"],
+    story.append(
+        Paragraph(
+            f"OmniSight — Daily Attendance Report<br/>"
+            f"<font size='{HEADER_SIZE}'>Date: {target_date}"
+            f"  |  Late threshold: {late_threshold} min</font>",
+            title_style,
+        )
     )
-    story.append(title)
     story.append(Spacer(1, 0.4 * cm))
 
     # ── Summary row ───────────────────────────────────────────────────────────
@@ -473,9 +497,10 @@ def _build_daily_report_pdf(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 0), (-1, 0), font_bold),
+                ("FONTSIZE", (0, 0), (-1, -1), HEADER_SIZE),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("FONTSIZE", (0, 0), (-1, -1), 11),
+                ("FONTNAME", (0, 1), (-1, -1), font),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f0f4ff"), colors.white]),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
@@ -487,18 +512,17 @@ def _build_daily_report_pdf(
     story.append(Spacer(1, 0.6 * cm))
 
     # ── Detail table ──────────────────────────────────────────────────────────
-    headers = ["#", "Emp Code", "Name", "Department", "Shift", "Check-in Time", "Status"]
-    col_widths = [1 * cm, 3 * cm, 6 * cm, 5 * cm, 3.5 * cm, 4 * cm, 3 * cm]
+    headers = ["#", "Emp Code", "Name", "Department", "Shift", "Check-in", "Status"]
+    col_widths = [1 * cm, 3 * cm, 6.5 * cm, 5.5 * cm, 3.5 * cm, 3.5 * cm, 3 * cm]
 
     table_data = [headers]
     for i, r in enumerate(records, start=1):
         check_in = r["check_in_time"]
         if check_in:
-            # ISO string → display HH:MM:SS
             try:
                 check_in = datetime.fromisoformat(check_in).strftime("%H:%M:%S")
             except ValueError:
-                pass  # keep raw string
+                pass
         table_data.append(
             [
                 str(i),
@@ -513,28 +537,32 @@ def _build_daily_report_pdf(
 
     detail_table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    # Base style
     base_style = [
+        # Header row
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTNAME", (0, 0), (-1, 0), font_bold),
+        ("FONTSIZE", (0, 0), (-1, 0), HEADER_SIZE),
+        # Body rows
+        ("FONTNAME", (0, 1), (-1, -1), font),
+        ("FONTSIZE", (0, 1), (-1, -1), BODY_SIZE),
+        # Alignment
         ("ALIGN", (0, 0), (0, -1), "CENTER"),  # row number
         ("ALIGN", (5, 0), (5, -1), "CENTER"),  # check-in
         ("ALIGN", (6, 0), (6, -1), "CENTER"),  # status
+        # Grid & padding
         ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
     ]
 
     # Per-row status colouring
     for row_idx, r in enumerate(records, start=1):
-        status = r["status"]
-        status_col = STATUS_COLOR.get(status, colors.grey)
+        status_col = STATUS_COLOR.get(r["status"], colors.grey)
         base_style.append(("TEXTCOLOR", (6, row_idx), (6, row_idx), status_col))
-        base_style.append(("FONTNAME", (6, row_idx), (6, row_idx), "Helvetica-Bold"))
+        base_style.append(("FONTNAME", (6, row_idx), (6, row_idx), font_bold))
 
     detail_table.setStyle(TableStyle(base_style))
     story.append(detail_table)
@@ -544,7 +572,7 @@ def _build_daily_report_pdf(
     story.append(
         Paragraph(
             f"Generated by OmniSight on {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
-            styles["Normal"],
+            body_style,
         )
     )
 
@@ -684,6 +712,234 @@ async def daily_attendance_report_pdf(
 
     pdf_bytes = _build_daily_report_pdf(target_date, late_threshold, summary, records)
     filename = f"attendance_{target_date}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Monthly PDF ───────────────────────────────────────────────────────────────
+
+
+def _build_monthly_report_pdf(
+    year: int,
+    mon: int,
+    total_records: int,
+    unique_employees: int,
+    by_day: list[dict],
+    by_department: list[dict],
+) -> bytes:
+    """
+    Build the monthly attendance summary as a PDF byte string.
+
+    Layout (portrait A4):
+    - Title + month
+    - Summary stats: total records / unique employees
+    - Daily breakdown table: date | count | unique employees
+    - Department breakdown table: dept | count | unique employees
+    """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import cm
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"reportlab not installed: {e}") from e
+
+    from app.core.pdf_utils import BODY_SIZE, HEADER_SIZE, TITLE_SIZE, get_font, get_font_bold
+
+    font = get_font()
+    font_bold = get_font_bold()
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "MT", parent=styles["Title"], fontName=font_bold, fontSize=TITLE_SIZE, leading=TITLE_SIZE * 1.4
+    )
+    section_style = ParagraphStyle("MS", parent=styles["Heading2"], fontName=font_bold, fontSize=HEADER_SIZE + 1)
+    body_style = ParagraphStyle("MB", parent=styles["Normal"], fontName=font, fontSize=BODY_SIZE)
+
+    _HDR = colors.HexColor("#1e3a5f")
+    _ALT = colors.HexColor("#f8fafc")
+    _GRID = colors.HexColor("#cbd5e1")
+
+    def _tbl_style(n_header_rows: int = 1) -> TableStyle:
+        return TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, n_header_rows - 1), _HDR),
+                ("TEXTCOLOR", (0, 0), (-1, n_header_rows - 1), colors.white),
+                ("FONTNAME", (0, 0), (-1, n_header_rows - 1), font_bold),
+                ("FONTSIZE", (0, 0), (-1, n_header_rows - 1), HEADER_SIZE),
+                ("FONTNAME", (0, n_header_rows), (-1, -1), font),
+                ("FONTSIZE", (0, n_header_rows), (-1, -1), BODY_SIZE),
+                ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+                ("ROWBACKGROUNDS", (0, n_header_rows), (-1, -1), [colors.white, _ALT]),
+                ("GRID", (0, 0), (-1, -1), 0.3, _GRID),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+
+    story = []
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    month_name = f"{year:04d}-{mon:02d}"
+    story.append(
+        Paragraph(
+            f"OmniSight — Monthly Attendance Summary<br/><font size='{HEADER_SIZE}'>{month_name}</font>", title_style
+        )
+    )
+    story.append(Spacer(1, 0.4 * cm))
+
+    # ── Totals summary ────────────────────────────────────────────────────────
+    totals_data = [
+        ["Total Check-in Records", "Unique Employees"],
+        [str(total_records), str(unique_employees)],
+    ]
+    totals_tbl = Table(totals_data, colWidths=[8 * cm, 8 * cm])
+    totals_tbl.setStyle(_tbl_style())
+    story.append(totals_tbl)
+    story.append(Spacer(1, 0.7 * cm))
+
+    # ── Daily breakdown ───────────────────────────────────────────────────────
+    story.append(Paragraph("Daily Breakdown", section_style))
+    story.append(Spacer(1, 0.2 * cm))
+
+    day_headers = ["Date", "Check-in Records", "Unique Employees"]
+    day_data = [day_headers] + [[d["date"], str(d["count"]), str(d["unique_employees"])] for d in by_day]
+    day_tbl = Table(day_data, colWidths=[5 * cm, 5.5 * cm, 5.5 * cm], repeatRows=1)
+    day_tbl.setStyle(_tbl_style())
+    story.append(day_tbl)
+    story.append(Spacer(1, 0.7 * cm))
+
+    # ── Department breakdown ──────────────────────────────────────────────────
+    if by_department:
+        story.append(Paragraph("By Department", section_style))
+        story.append(Spacer(1, 0.2 * cm))
+
+        dept_headers = ["Department", "Check-in Records", "Unique Employees"]
+        dept_data = [dept_headers] + [
+            [d["dept_name"], str(d["count"]), str(d["unique_employees"])] for d in by_department
+        ]
+        dept_tbl = Table(dept_data, colWidths=[7 * cm, 5 * cm, 5 * cm], repeatRows=1)
+        dept_tbl.setStyle(_tbl_style())
+        story.append(dept_tbl)
+        story.append(Spacer(1, 0.4 * cm))
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    story.append(
+        Paragraph(
+            f"Generated by OmniSight on {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
+            body_style,
+        )
+    )
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+@router.get("/summary/pdf")
+async def attendance_summary_pdf(
+    month: str = Query(default=None, description="YYYY-MM format, defaults to current month"),
+    dept_id: int = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
+    """
+    Export the monthly attendance summary as a downloadable PDF.
+
+    Mirrors GET /summary (JSON) — same data, PDF output.
+    Returns portrait A4 PDF with:
+    - Total records + unique employees
+    - Daily breakdown table (all days in month, zero-filled)
+    - Department breakdown table
+
+    Requires HR or ADMIN role.
+    """
+    today = datetime.now(UTC).date()
+    if month:
+        try:
+            year, mon = int(month[:4]), int(month[5:7])
+        except (ValueError, IndexError):
+            year, mon = today.year, today.month
+    else:
+        year, mon = today.year, today.month
+
+    _, last_day = calendar.monthrange(year, mon)
+    start = datetime(year, mon, 1, tzinfo=UTC)
+    end = datetime(year, mon, last_day, 23, 59, 59, tzinfo=UTC)
+
+    base_q = (
+        select(AttendanceLog)
+        .options(selectinload(AttendanceLog.employee).selectinload(Employee.department))
+        .where(AttendanceLog.timestamp.between(start, end))
+    )
+    if dept_id:
+        base_q = base_q.join(AttendanceLog.employee).where(Employee.dept_id == dept_id)
+
+    result = await db.execute(base_q)
+    logs = result.scalars().all()
+
+    # ── by_day aggregation ────────────────────────────────────────────────────
+    day_map: dict[str, dict] = {}
+    for log in logs:
+        d = log.timestamp.strftime("%Y-%m-%d")
+        if d not in day_map:
+            day_map[d] = {"date": d, "count": 0, "unique_employees": set()}
+        day_map[d]["count"] += 1
+        day_map[d]["unique_employees"].add(str(log.employee_id))
+
+    by_day_raw = [
+        {"date": d, "count": v["count"], "unique_employees": len(v["unique_employees"])} for d, v in day_map.items()
+    ]
+    # Fill all days including zeros
+    by_day = []
+    for day_num in range(1, last_day + 1):
+        d = f"{year:04d}-{mon:02d}-{day_num:02d}"
+        existing = next((x for x in by_day_raw if x["date"] == d), None)
+        by_day.append(existing or {"date": d, "count": 0, "unique_employees": 0})
+
+    # ── by_department aggregation ─────────────────────────────────────────────
+    dept_map: dict[int, dict] = {}
+    for log in logs:
+        dept = log.employee.department if log.employee else None
+        did = dept.id if dept else 0
+        name = dept.name if dept else "Unknown"
+        if did not in dept_map:
+            dept_map[did] = {"dept_name": name, "count": 0, "unique_employees": set()}
+        dept_map[did]["count"] += 1
+        dept_map[did]["unique_employees"].add(str(log.employee_id))
+
+    by_department = sorted(
+        [
+            {"dept_name": d["dept_name"], "count": d["count"], "unique_employees": len(d["unique_employees"])}
+            for d in dept_map.values()
+        ],
+        key=lambda x: -x["count"],
+    )
+
+    all_employees = {str(log.employee_id) for log in logs}
+
+    pdf_bytes = _build_monthly_report_pdf(
+        year=year,
+        mon=mon,
+        total_records=len(logs),
+        unique_employees=len(all_employees),
+        by_day=by_day,
+        by_department=by_department,
+    )
+    filename = f"attendance_monthly_{year:04d}-{mon:02d}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
