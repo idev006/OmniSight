@@ -1,15 +1,18 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import FileResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, cast, Date
-from sqlalchemy.orm import selectinload
-from app.db.postgres import get_db
-from app.models.orm import AttendanceLog, Employee, Department, Shift
-from app.core.security import require_hr, CurrentUser
-from app.db.redis import redis as _redis
-from datetime import date, datetime, timedelta, UTC
-from pathlib import Path
 import calendar
+import io
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy import Date, cast, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.security import CurrentUser, require_hr
+from app.db.postgres import get_db
+from app.db.redis import redis as _redis
+from app.models.orm import AttendanceLog, Department, Employee, Shift
 
 router = APIRouter()
 
@@ -397,3 +400,292 @@ async def attendance_summary(
         "by_day": full_days,
         "by_department": by_department,
     }
+
+
+# ── PDF Export ────────────────────────────────────────────────────────────────
+
+
+def _build_daily_report_pdf(
+    target_date: date,
+    late_threshold: int,
+    summary: dict,
+    records: list[dict],
+) -> bytes:
+    """
+    Build the daily attendance report as a PDF byte string using ReportLab.
+
+    Layout:
+    - Header: title + date + late threshold
+    - Summary box: total / present / late / absent
+    - Table: emp_code | full_name | dept | shift | check_in_time | status
+    """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import cm
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"reportlab not installed: {e}") from e
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=landscape(A4),
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+
+    # ── Status colour map ─────────────────────────────────────────────────────
+    STATUS_COLOR = {
+        "PRESENT": colors.HexColor("#22c55e"),  # green-500
+        "LATE": colors.HexColor("#f59e0b"),  # amber-500
+        "ABSENT": colors.HexColor("#ef4444"),  # red-500
+    }
+
+    story = []
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    title = Paragraph(
+        f"<b>OmniSight — Daily Attendance Report</b><br/>"
+        f"Date: {target_date}  |  Late threshold: {late_threshold} min",
+        styles["Title"],
+    )
+    story.append(title)
+    story.append(Spacer(1, 0.4 * cm))
+
+    # ── Summary row ───────────────────────────────────────────────────────────
+    summary_data = [
+        ["Total", "Present", "Late", "Absent"],
+        [
+            str(summary["total"]),
+            str(summary["present"]),
+            str(summary["late"]),
+            str(summary["absent"]),
+        ],
+    ]
+    summary_table = Table(summary_data, colWidths=[4 * cm] * 4)
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTSIZE", (0, 0), (-1, -1), 11),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f0f4ff"), colors.white]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.append(summary_table)
+    story.append(Spacer(1, 0.6 * cm))
+
+    # ── Detail table ──────────────────────────────────────────────────────────
+    headers = ["#", "Emp Code", "Name", "Department", "Shift", "Check-in Time", "Status"]
+    col_widths = [1 * cm, 3 * cm, 6 * cm, 5 * cm, 3.5 * cm, 4 * cm, 3 * cm]
+
+    table_data = [headers]
+    for i, r in enumerate(records, start=1):
+        check_in = r["check_in_time"]
+        if check_in:
+            # ISO string → display HH:MM:SS
+            try:
+                check_in = datetime.fromisoformat(check_in).strftime("%H:%M:%S")
+            except ValueError:
+                pass  # keep raw string
+        table_data.append(
+            [
+                str(i),
+                r["emp_code"] or "",
+                r["full_name"] or "",
+                r["dept_name"] or "—",
+                f"{r['shift_start']}–{r['shift_end']}",
+                check_in or "—",
+                r["status"],
+            ]
+        )
+
+    detail_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+
+    # Base style
+    base_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),  # row number
+        ("ALIGN", (5, 0), (5, -1), "CENTER"),  # check-in
+        ("ALIGN", (6, 0), (6, -1), "CENTER"),  # status
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+    ]
+
+    # Per-row status colouring
+    for row_idx, r in enumerate(records, start=1):
+        status = r["status"]
+        status_col = STATUS_COLOR.get(status, colors.grey)
+        base_style.append(("TEXTCOLOR", (6, row_idx), (6, row_idx), status_col))
+        base_style.append(("FONTNAME", (6, row_idx), (6, row_idx), "Helvetica-Bold"))
+
+    detail_table.setStyle(TableStyle(base_style))
+    story.append(detail_table)
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(
+        Paragraph(
+            f"Generated by OmniSight on {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
+            styles["Normal"],
+        )
+    )
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+@router.get("/daily-report/pdf")
+async def daily_attendance_report_pdf(
+    report_date: date = Query(default=None, alias="date"),
+    dept_id: int = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_hr),
+):
+    """
+    Export the daily attendance report as a downloadable PDF.
+
+    Reuses the same data logic as GET /daily-report (JSON).
+    Returns a PDF with:
+    - Header (title, date, late threshold)
+    - Summary box (total / present / late / absent)
+    - Per-employee detail table (sorted: ABSENT → LATE → PRESENT)
+
+    Requires HR or ADMIN role.
+    """
+    target_date = report_date or datetime.now(UTC).date()
+
+    # Read late threshold from Redis
+    late_threshold = 15
+    try:
+        val = await _redis.get("setting:late_threshold_minutes")
+        if val:
+            late_threshold = max(0, int(val))
+    except Exception:
+        pass
+
+    # Fetch employees with shift
+    emp_q = (
+        select(Employee)
+        .options(
+            selectinload(Employee.department),
+            selectinload(Employee.shift),
+        )
+        .where(Employee.is_active == True, Employee.shift_id.isnot(None))
+    )
+    if dept_id:
+        emp_q = emp_q.where(Employee.dept_id == dept_id)
+
+    emp_result = await db.execute(emp_q)
+    employees = emp_result.scalars().all()
+
+    if not employees:
+        # Return an empty-record PDF rather than 404
+        records = []
+        summary = {"total": 0, "present": 0, "late": 0, "absent": 0}
+        pdf_bytes = _build_daily_report_pdf(target_date, late_threshold, summary, records)
+        filename = f"attendance_{target_date}.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # Fetch attendance logs for target date
+    emp_ids = [e.id for e in employees]
+    day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=UTC)
+    day_end = day_start + timedelta(days=1)
+
+    logs_q = (
+        select(AttendanceLog)
+        .where(
+            AttendanceLog.employee_id.in_(emp_ids),
+            AttendanceLog.timestamp >= day_start,
+            AttendanceLog.timestamp < day_end,
+        )
+        .order_by(AttendanceLog.timestamp.asc())
+    )
+    logs_result = await db.execute(logs_q)
+    logs = logs_result.scalars().all()
+
+    # First check-in per employee
+    first_checkin: dict = {}
+    for log in logs:
+        eid = str(log.employee_id)
+        if eid not in first_checkin:
+            first_checkin[eid] = log
+
+    # Build records
+    records = []
+    for emp in employees:
+        eid = str(emp.id)
+        shift = emp.shift
+        first_log = first_checkin.get(eid)
+
+        if first_log is None:
+            status = "ABSENT"
+            check_in_time = None
+            minutes_late = None
+        else:
+            check_in_time = first_log.timestamp
+            shift_start_dt = datetime(
+                target_date.year,
+                target_date.month,
+                target_date.day,
+                shift.start_time.hour,
+                shift.start_time.minute,
+                tzinfo=UTC,
+            )
+            delta_seconds = (check_in_time - shift_start_dt).total_seconds()
+            minutes_late = max(0, int(delta_seconds // 60))
+            status = "PRESENT" if delta_seconds <= late_threshold * 60 else "LATE"
+
+        records.append(
+            {
+                "employee_id": str(emp.id),
+                "emp_code": emp.emp_code,
+                "full_name": emp.full_name,
+                "dept_name": emp.department.name if emp.department else None,
+                "shift_name": shift.name,
+                "shift_start": shift.start_time.strftime("%H:%M"),
+                "shift_end": shift.end_time.strftime("%H:%M"),
+                "check_in_time": check_in_time.isoformat() if check_in_time else None,
+                "minutes_late": minutes_late,
+                "status": status,
+            }
+        )
+
+    order = {"ABSENT": 0, "LATE": 1, "PRESENT": 2}
+    records.sort(key=lambda r: (order[r["status"]], r["full_name"]))
+
+    summary = {
+        "total": len(records),
+        "present": sum(1 for r in records if r["status"] == "PRESENT"),
+        "late": sum(1 for r in records if r["status"] == "LATE"),
+        "absent": sum(1 for r in records if r["status"] == "ABSENT"),
+    }
+
+    pdf_bytes = _build_daily_report_pdf(target_date, late_threshold, summary, records)
+    filename = f"attendance_{target_date}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
