@@ -1719,3 +1719,56 @@ grafana/
 ### Commits
 - `2bc3db4` — refactor: ruff auto-fix (unused imports)
 - `3f617c6` — feat(sprint-23): Thai font PDF + monthly PDF export
+
+---
+
+## Sprint 24 — Integration Tests + Grafana Alerting + Smoke Test ✅ DONE
+**วันที่:** 2026-05-21
+**เป้าหมาย:** ปิด Phase 5 → 100% — integration test coverage, production alerting, production smoke test
+
+### สิ่งที่ทำ
+
+#### 1. Integration Tests — Attendance (`test_attendance.py`, 22 tests)
+- **list**: auth required (401), returns list, default limit ≤100, custom limit, record shape (id/employee_id/timestamp/confidence_score), date filter returns []
+- **KPI**: auth required, structure (date/today/weekly/by_dept), counts non-negative, weekly has 7 entries
+- **daily-report**: auth required, structure (date/late_threshold_minutes/records), status values in {PRESENT, LATE, ABSENT}, date param returns []
+- **summary**: auth required, structure (month/total_records/unique_employees/by_day/by_department), by_day covers full month (31 days for May), month param format
+- **PDF endpoints**: daily auth (401), returns PDF bytes (%PDF header), Content-Disposition attachment; monthly auth (401), returns PDF, month param in filename
+
+#### 2. Integration Tests — Employees (`test_employees.py`, 15 tests)
+- **list**: auth required, returns list, shape has id/emp_code/full_name/is_active/enrollment_count
+- **create**: auth required, 201 success (emp_code + full_name in response), duplicate emp_code → 4xx, missing emp_code → 422
+- **get by ID**: auth required, found (200 + id matches), 404 for fake UUID
+- **patch**: update full_name (200), deactivate is_active=False (200), 404 for fake UUID
+- ใช้ `_unique_emp_code()` → `TEST-{uuid[:8]}` เพื่อหลีกเลี่ยง conflict ข้าม test run
+
+#### 3. Grafana Alerting Rules (`grafana/provisioning/alerting/omnisight_alerts.yaml`)
+5 alert rules ใต้ group "OmniSight Core Alerts" (evaluate ทุก 1m):
+
+| Rule UID | Condition | Duration | Severity |
+|----------|-----------|----------|----------|
+| omnisight-error-rate | dropped/received > 1% | 5m | warning |
+| omnisight-no-cameras | active_cameras < 1 | 2m | critical |
+| omnisight-high-latency | p95 inference > 3s | 5m | warning |
+| omnisight-qdrant-latency | p95 Qdrant search > 500ms | 5m | warning |
+| omnisight-low-cache-hit | cache hit rate < 20% | 10m | info |
+
+Auto-provisioned via existing volume mount `./grafana/provisioning:/etc/grafana/provisioning:ro` — ไม่ต้องแก้ docker-compose
+
+#### 4. Production Smoke Test (`scripts/smoke_test.py`)
+- Validates all key endpoints ต่อ URL ที่กำหนด (dev หรือ prod)
+- Checks: `/health`, `/metrics`, auth, employees, attendance, PDF exports, settings, stations, departments
+- Flags: `--url`, `--user`, `--password`, `--insecure` (skip TLS), `--timeout`
+- Exit 0 = all pass, exit 1 = any fail
+- ใช้ ANSI colors + graceful exception handling (ASCII-safe สำหรับ Windows console)
+
+### Files Created
+| File | รายละเอียด |
+|------|-----------|
+| `backend/tests/integration/test_attendance.py` | 22 integration tests |
+| `backend/tests/integration/test_employees.py` | 15 integration tests |
+| `grafana/provisioning/alerting/omnisight_alerts.yaml` | 5 Grafana alert rules |
+| `scripts/smoke_test.py` | Production smoke test script |
+
+### Commits
+- `9fea26f` — test(sprint-24): integration tests + Grafana alerting + smoke test

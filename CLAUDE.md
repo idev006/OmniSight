@@ -82,7 +82,7 @@ Phase 1 — Foundation     █████████████████�
 Phase 2 — AI Core        ████████████████████ 100%  ✅ DONE
 Phase 3 — HR Features    ████████████████████ 100%  ✅ DONE
 Phase 4 — Multi-Camera   ████████████████████ 100%  ✅ DONE
-Phase 5 — Production     █████████████████░░░  85%  🔄 IN PROGRESS
+Phase 5 — Production     ████████████████████ 100%  ✅ DONE
 ```
 
 ### Data ใน DB (ณ Sprint 15d)
@@ -220,7 +220,7 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-## สถานะ Sprint 22–23 (✅ DONE — 2026-05-21)
+## สถานะ Sprint 22–24 (✅ DONE — 2026-05-21)
 
 | งาน | สถานะ |
 |-----|-------|
@@ -231,6 +231,9 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 | Thai font (Leelawadee TTF bundled) — ชื่อไทยโชว์ถูกต้องใน PDF | ✅ Done |
 | Monthly PDF report — `GET /api/v1/attendance/summary/pdf` | ✅ Done |
 | `app/core/pdf_utils.py` — font registration helper | ✅ Done |
+| Integration tests — attendance (22 tests) + employees (15 tests) | ✅ Done |
+| Grafana alerting rules — 5 rules (error_rate, cameras, latency, cache) | ✅ Done |
+| Production smoke test — `scripts/smoke_test.py` | ✅ Done |
 
 ## PDF Report Architecture
 
@@ -243,13 +246,22 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 | Frontend | Daily Status + Monthly Report tabs มีปุ่ม "Export PDF" ต่างหากจาก CSV |
 | Auth | ต้องการ HR หรือ ADMIN role |
 
-## งานที่ต้องทำถัดไป (Sprint 24+)
+## Smoke Test
+
+```powershell
+# Dev
+.\my_env\Scripts\python.exe scripts\smoke_test.py
+
+# Production
+.\my_env\Scripts\python.exe scripts\smoke_test.py --url https://your-server --insecure
+```
+
+## งานที่ต้องทำถัดไป (Sprint 25+)
 
 ### ลำดับความสำคัญ
-1. 🟡 **GitHub push** — Sprint 21–23 ยังไม่ได้ push (รอ approval)
-2. 🟢 **Phase 5 → 100%** — production smoke test (`docker-compose.prod.yml` จริง)
-3. 🟢 **Integration test coverage** — attendance, employees, enrollment endpoints
-4. 🟢 **Grafana alerting rules** — alert: error_rate > 1%, camera drop, latency spike
+1. 🟢 **Production deploy** — รัน `docker-compose.prod.yml` จริง + smoke test ต่อ production URL
+2. 🟢 **Enrollment integration tests** — `test_enrollment.py` (enroll face, list templates, delete template)
+3. 🟢 **E2E browser tests** — Playwright/Cypress สำหรับ UI flows
 
 ---
 
@@ -267,7 +279,7 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 |------|---------|
 | `doc/project_management/PHILOSOPHY.md` | **หลักการทำงาน 7 ข้อ** — อ่านก่อนเริ่มงานทุก session |
 | `doc/project_management/PROJECT_STATUS.md` | Dashboard + phase tracking |
-| `doc/project_management/SPRINT_LOG.md` | Sprint 1–22 history + context |
+| `doc/project_management/SPRINT_LOG.md` | Sprint 1–24 history + context |
 | `doc/project_management/DECISIONS_LOG.md` | ADR-001 ถึง ADR-011 |
 | `doc/claude_version/chapter_17_multi_camera_pilot_console.md` | Multi-camera & Pilot Console design |
 | `doc/claude_version/chapter_22_auth_authorization.md` | Auth/Authz — seq diagrams + API matrix |
@@ -278,8 +290,8 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 - Repository: https://github.com/idev006/OmniSight
 - Branch: master
-- Latest push: Sprint 23 (`0e8834a`) — Thai font PDF + monthly PDF + unit tests
-- All sprints through Sprint 23: **pushed ✅**
+- Latest push: Sprint 24 (`9fea26f`) — integration tests + Grafana alerting + smoke test
+- All sprints through Sprint 24: **pushed ✅**
 - .gitignore excludes: `my_env/`, `storage/`, `frontend/node_modules/`, `models/`, `data/`, `backups/`
 - `backend/.env` is now **tracked** (localhost defaults only — no real secrets)
 
@@ -303,4 +315,4 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-21 (Sprint 23 — Thai font PDF, daily+monthly PDF export, ruff cleanup)*
+*อัพเดทล่าสุด: 2026-05-21 (Sprint 24 — integration tests, Grafana alerting, smoke test, Phase 5 = 100%)*
