@@ -1548,3 +1548,58 @@ def get_cached_result(self, track_id: int, ttl: float = RESULT_CACHE_S) -> "Face
 
 ### Commit
 - `98b52c6` — chore: magic one-click setup for team members
+
+---
+
+## Sprint 21 — Prometheus + Grafana Observability Stack ✅ DONE
+**วันที่:** 2026-05-21  
+**เป้าหมาย:** visualize `/metrics` endpoint ด้วย Grafana — pre-built dashboard พร้อมใช้ทันที
+
+### สิ่งที่ทำ
+
+#### 1. `prometheus.yml` (NEW)
+- Scrape backend `/metrics` ทุก 15s ผ่าน `host.docker.internal:8000`
+- TSDB retention: 15 วัน
+
+#### 2. `grafana/` directory (NEW)
+```
+grafana/
+├── provisioning/
+│   ├── datasources/prometheus.yml  ← auto-wire Prometheus datasource
+│   └── dashboards/provider.yml     ← auto-load dashboards จาก /etc/grafana/dashboards
+└── dashboards/omnisight.json       ← pre-built OmniSight dashboard (10 panels)
+```
+
+**Dashboard panels:**
+| Panel | Type | Metric |
+|-------|------|--------|
+| Active Cameras | Stat (colored) | `omnisight_active_cameras` |
+| Inference Workers | Stat | `omnisight_inference_workers` |
+| Inflight Inferences | Stat | `omnisight_inflight_inferences` |
+| Frame Drop Rate | Stat % | `dropped / received * 100` |
+| Cache Hit Rate | Stat % | `hits / (hits + misses) * 100` |
+| Frame Pipeline | Timeseries | received / processed / dropped fps |
+| Face Results | Timeseries | detected / matched / unknown / spoof fps |
+| Inference Latency | Timeseries | p50 / p95 histogram_quantile |
+| Qdrant Search Latency | Timeseries | p50 / p95 histogram_quantile |
+| Cache Hits vs Misses | Timeseries | hits / misses rate comparison |
+
+#### 3. `docker-compose.yml`
+- เพิ่ม `prometheus` service (port 9090, `host-gateway` extra_host)
+- เพิ่ม `grafana` service (port 3000, GF_SECURITY_ADMIN_PASSWORD=admin)
+- เพิ่ม volumes: `promdata`, `grafanadata`
+
+### Load Test Sprint 21 (10 cameras × 2fps × 30s)
+
+| Metric | Sprint 15d | Sprint 21 | เปลี่ยนแปลง |
+|--------|-----------|-----------|------------|
+| Error rate | 0.00% | **0.00%** | — |
+| p50 latency | 3,023ms | **1,187ms** | 🟢 2.5× faster |
+| p95 latency | 3,547ms | **1,969ms** | 🟢 1.8× faster |
+| CPU avg | 395% | **297%** | 🟢 -25% |
+| RAM avg | 837MB | **792MB** | 🟢 -5% |
+
+> การปรับปรุงเกิดจาก Sprint 15b–20: 2-phase pipeline + backpressure + recognition cache TTL + batch ops
+
+### Commits
+- `8beef1b` — feat(sprint-21): Prometheus + Grafana observability stack

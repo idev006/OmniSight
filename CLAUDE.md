@@ -151,7 +151,7 @@ Phase 5 — Production     █████████████████�
 | Hungarian tracker | `scipy.optimize.linear_sum_assignment` — globally optimal face matching |
 | FaceEngine warmup | `face_engine.warmup()` at startup — ไม่มี first-camera stall |
 | Prometheus metrics | `GET /metrics` — 14 omnisight metrics, Grafana-ready |
-| Load test result | 10 cameras × 2fps: **error=0%**, p95=3.5s (CPU-only, no GPU) |
+| Load test result (Sprint 21) | 10 cameras × 2fps: **error=0%**, p50=1.2s, p95=2.0s, CPU avg=297% (2.5× faster than Sprint 15d) |
 
 ---
 
@@ -220,12 +220,12 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-## งานที่ต้องทำถัดไป (Sprint 21+)
+## งานที่ต้องทำถัดไป (Sprint 22+)
 
 ### ลำดับความสำคัญ
-1. 🔄 **Grafana dashboard** — IN PROGRESS: Prometheus + Grafana ใน docker-compose + pre-built OmniSight dashboard
-2. 🟢 **Export รายงาน PDF** — HR ต้องการ attendance report ดาวน์โหลดได้
-3. 🟢 **Unit tests** — ทีมจะมาช่วย — ต้องมี test ป้องกัน regression
+1. 🟢 **Unit tests** — ทีมจะมาช่วย — ต้องมี pytest coverage ป้องกัน regression
+2. 🟢 **Export PDF report** — HR ต้องการ attendance report ดาวน์โหลดเป็น PDF
+3. 🟢 **Phase 5 → 100%** — Grafana done ✅, เหลือ unit tests + production smoke test
 
 ---
 
@@ -279,4 +279,4 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-21 (Sprint 20b/20c — Mobile Scan UX overhaul, recognition cache TTL, team onboarding setup.bat)*
+*อัพเดทล่าสุด: 2026-05-21 (Sprint 21 — Grafana observability stack, load test Sprint 21: p50=1.2s error=0%)*

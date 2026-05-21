@@ -334,7 +334,7 @@ Phase 5 — Production     █████████████████�
 | 5.3 | Logging & monitoring | ✅ Done (Sprint 15) | — |
 | 5.5 | Performance test (10 cameras) | ✅ Done (Sprint 15d) | — |
 | 5.9 | rtsp_agent Dockerfile | ✅ Done (Sprint 15) | — |
-| 5.10 | Grafana dashboard (visualize Prometheus metrics) | 🔄 In Progress (Sprint 21) | 🟢 LOW |
+| 5.10 | Grafana dashboard (visualize Prometheus metrics) | ✅ Done (Sprint 21) | — |
 | 5.11 | System Info admin dashboard | ✅ Done (Sprint 19) | — |
 | 5.12 | 2-phase multi-face pipeline | ✅ Done (Sprint 20) | — |
 | 5.13 | Team onboarding (setup.bat + README) | ✅ Done (Sprint 20c) | — |
@@ -388,6 +388,8 @@ Phase 5 — Production     █████████████████�
 | Production Docker stack | ✅ nginx SSL + backend + postgres + qdrant + redis | `docker-compose.prod.yml` |
 | Backup automation | ✅ scripts/backup.sh + backup.ps1 + restore.sh | 7-day rotation |
 | API health | ✅ all endpoints 200 | — |
-| **Load test (10 cam × 2fps × 30s)** | **error=0.00% ✅  p50=3,023ms  p95=3,547ms  CPU avg=395%  RAM avg=837MB** | error < 5% |
+| **Load test Sprint 15d (10 cam × 2fps × 30s)** | error=0.00% ✅  p50=3,023ms  p95=3,547ms  CPU avg=395%  RAM avg=837MB | error < 5% |
+| **Load test Sprint 21 (10 cam × 2fps × 30s)** | **error=0.00% ✅  p50=1,187ms  p95=1,969ms  CPU avg=297%  RAM avg=792MB** | error < 5% ✅ 2.5× faster p50 |
 | Prometheus metrics endpoint | ✅ `GET /metrics` — 14 omnisight metrics + python runtime | Grafana-ready |
+| Grafana dashboard | ✅ Auto-provisioned at http://localhost:3000 — 10 panels pre-built | Sprint 21 |
 | Structured JSON logging | ✅ `logs/omnisight.log` daily rotation, 7-day retention | — |
