@@ -1,0 +1,264 @@
+# OmniSight — Grafana Unified Alerting Rules
+# Provisioned automatically on Grafana startup.
+# Edit here and restart Grafana container to apply changes.
+#
+# Alert channels (contact points) must be configured manually in Grafana UI
+# (Alerting → Contact points) or via additional provisioning files.
+# Default: all alerts route to the built-in "grafana-default-email" contact point.
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: OmniSight Core Alerts
+    folder: OmniSight
+    interval: 1m   # evaluate every 60 s
+    rules:
+
+      # ── 1. Frame Error Rate > 1% ─────────────────────────────────────────
+      # Fires when >1% of processed frames result in errors over 5 minutes.
+      # Indicates face engine crash, OOM, or Qdrant connection failure.
+      - uid: omnisight-error-rate
+        title: "[OmniSight] Frame Error Rate > 1%"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                rate(omnisight_frames_dropped_total[5m])
+                  / (rate(omnisight_frames_received_total[5m]) + 1e-9)
+              legendFormat: error_rate
+              intervalMs: 15000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [0.01]   # 1%
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "High frame error rate detected"
+          description: >
+            More than 1% of processed frames are being dropped/errored
+            (rate over last 5 minutes). Check backend logs for face engine
+            or Qdrant connectivity issues.
+        labels:
+          severity: warning
+          team: backend
+
+      # ── 2. Active Cameras Dropped to Zero ────────────────────────────────
+      # Fires when all cameras disconnect unexpectedly.
+      # Gives a 2-minute grace period to avoid alerts during restarts.
+      - uid: omnisight-no-cameras
+        title: "[OmniSight] No Active Cameras"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: omnisight_active_cameras
+              legendFormat: active_cameras
+              intervalMs: 15000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [1]
+                    type: lt    # < 1  (i.e., == 0)
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: "All cameras disconnected"
+          description: >
+            omnisight_active_cameras == 0 for more than 2 minutes.
+            Cameras may have lost network connectivity or the WebSocket
+            handler crashed.
+        labels:
+          severity: critical
+          team: ops
+
+      # ── 3. Inference Latency p95 > 3s ────────────────────────────────────
+      # Fires when 95th-percentile inference time exceeds 3 seconds.
+      # Indicates CPU/GPU saturation or model loading issues.
+      - uid: omnisight-high-latency
+        title: "[OmniSight] Inference Latency p95 > 3s"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                histogram_quantile(0.95,
+                  rate(omnisight_inference_duration_seconds_bucket[5m])
+                )
+              legendFormat: p95_inference
+              intervalMs: 15000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [3.0]   # seconds
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Face inference latency is high (p95 > 3s)"
+          description: >
+            p95 inference latency has exceeded 3 seconds for 5 minutes.
+            Consider increasing inference_workers in Settings UI, or
+            switching to GPU ONNX provider.
+        labels:
+          severity: warning
+          team: backend
+
+      # ── 4. Qdrant Search Latency p95 > 500ms ─────────────────────────────
+      # Fires when vector search takes >500ms at the 95th percentile.
+      # Indicates Qdrant overload or collection needs reindexing.
+      - uid: omnisight-qdrant-latency
+        title: "[OmniSight] Qdrant Search Latency p95 > 500ms"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                histogram_quantile(0.95,
+                  rate(omnisight_qdrant_search_duration_seconds_bucket[5m])
+                )
+              legendFormat: p95_qdrant
+              intervalMs: 15000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [0.5]   # 500ms
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Qdrant vector search latency is high"
+          description: >
+            p95 Qdrant search latency has exceeded 500ms for 5 minutes.
+            Check Qdrant container resources (RAM/CPU). Consider running
+            qdrant optimize on the face_registry collection.
+        labels:
+          severity: warning
+          team: backend
+
+      # ── 5. Cache Hit Rate < 20% ───────────────────────────────────────────
+      # Fires when recognition result cache is ineffective.
+      # May indicate recognition_cache_ttl is too short or tracker is losing
+      # track IDs (e.g., frequent camera reconnects).
+      - uid: omnisight-low-cache-hit
+        title: "[OmniSight] Recognition Cache Hit Rate < 20%"
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                rate(omnisight_cache_hits_total[10m])
+                  / (rate(omnisight_cache_hits_total[10m])
+                     + rate(omnisight_cache_misses_total[10m]) + 1e-9)
+              legendFormat: cache_hit_rate
+              intervalMs: 15000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [0.20]   # 20%
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              type: threshold
+        noDataState: OK
+        execErrState: OK       # no data = cameras offline, not a cache issue
+        for: 10m
+        annotations:
+          summary: "Recognition cache hit rate is low"
+          description: >
+            Cache hit rate < 20% over the last 10 minutes suggests the
+            recognition_cache_ttl setting may be too short, or cameras
+            are reconnecting frequently (resetting track IDs).
+            Check Settings UI → Performance → recognition_cache_ttl.
+        labels:
+          severity: info
+          team: backend
