@@ -29,27 +29,29 @@ if TYPE_CHECKING:
     from app.models.schemas import FaceResult
 
 # ── Tunables ──────────────────────────────────────────────────────────────────
-MATCH_IOU_THRESHOLD = 0.30   # min IoU to accept a track-detection assignment
-TRACK_EXPIRE_S      = 2.0    # seconds of inactivity before track is dropped
-RESULT_CACHE_S      = 4.0    # seconds to reuse cached Qdrant result per track
+MATCH_IOU_THRESHOLD = 0.30  # min IoU to accept a track-detection assignment
+TRACK_EXPIRE_S = 2.0  # seconds of inactivity before track is dropped
+RESULT_CACHE_S = 4.0  # seconds to reuse cached Qdrant result per track
 
 
 def _iou(a: list[int], b: list[int]) -> float:
-    ix1 = max(a[0], b[0]);  iy1 = max(a[1], b[1])
-    ix2 = min(a[2], b[2]);  iy2 = min(a[3], b[3])
+    ix1 = max(a[0], b[0])
+    iy1 = max(a[1], b[1])
+    ix2 = min(a[2], b[2])
+    iy2 = min(a[3], b[3])
     inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
     if inter == 0:
         return 0.0
-    union = (a[2]-a[0])*(a[3]-a[1]) + (b[2]-b[0])*(b[3]-b[1]) - inter
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
     return inter / union if union > 0 else 0.0
 
 
 @dataclass
 class _Track:
-    track_id:    int
-    bbox:        list[int]
-    last_seen:   float = field(default_factory=time.monotonic)
-    result:      "FaceResult | None" = None
+    track_id: int
+    bbox: list[int]
+    last_seen: float = field(default_factory=time.monotonic)
+    result: FaceResult | None = None
     result_time: float = 0.0
 
 
@@ -69,7 +71,7 @@ class FaceTracker:
     """
 
     def __init__(self) -> None:
-        self._tracks:  dict[int, _Track] = {}
+        self._tracks: dict[int, _Track] = {}
         self._next_id: int = 0
 
     def update(
@@ -83,10 +85,7 @@ class FaceTracker:
         now = time.monotonic()
 
         # Evict stale tracks
-        self._tracks = {
-            k: v for k, v in self._tracks.items()
-            if now - v.last_seen < TRACK_EXPIRE_S
-        }
+        self._tracks = {k: v for k, v in self._tracks.items() if now - v.last_seen < TRACK_EXPIRE_S}
 
         if not detections:
             return []
@@ -119,11 +118,11 @@ class FaceTracker:
         matched_det_indices: set[int] = set()
         result: list[tuple[int, np.ndarray, list[int]]] = []
 
-        for r, c in zip(row_ind, col_ind):
-            if cost[r, c] <= 1.0 - MATCH_IOU_THRESHOLD:   # IoU ≥ threshold
+        for r, c in zip(row_ind, col_ind, strict=False):
+            if cost[r, c] <= 1.0 - MATCH_IOU_THRESHOLD:  # IoU ≥ threshold
                 track = tracks[r]
                 emb, bbox = detections[c]
-                track.bbox      = bbox
+                track.bbox = bbox
                 track.last_seen = now
                 matched_det_indices.add(c)
                 result.append((track.track_id, emb, bbox))
@@ -138,9 +137,7 @@ class FaceTracker:
 
         return result
 
-    def get_cached_result(
-        self, track_id: int, ttl: float = RESULT_CACHE_S
-    ) -> "FaceResult | None":
+    def get_cached_result(self, track_id: int, ttl: float = RESULT_CACHE_S) -> FaceResult | None:
         """
         Return cached FaceResult for this track if still within ttl seconds.
 
@@ -155,10 +152,10 @@ class FaceTracker:
                 return track.result
         return None
 
-    def set_result(self, track_id: int, result: "FaceResult") -> None:
+    def set_result(self, track_id: int, result: FaceResult) -> None:
         track = self._tracks.get(track_id)
         if track:
-            track.result      = result
+            track.result = result
             track.result_time = time.monotonic()
 
     def clear(self) -> None:

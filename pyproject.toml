@@ -1,0 +1,60 @@
+[tool.ruff]
+# Target Python 3.12
+target-version = "py312"
+
+# Paths to lint
+include = ["backend/**/*.py"]
+exclude = [
+    "my_env/",
+    "backend/alembic/versions/",
+    ".claude/",
+]
+
+line-length = 120
+
+[tool.ruff.lint]
+# Start with essential rules only — tighten progressively as code matures
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes (undefined names, unused imports, etc.)
+    "W",    # pycodestyle warnings
+    "B",    # flake8-bugbear (common bugs)
+    "UP",   # pyupgrade (modern Python syntax)
+]
+ignore = [
+    # Style choices — don't block PRs over formatting opinions
+    "E501",  # line too long (handled by ruff-format)
+    "E712",  # comparison to True/False (common in SQLAlchemy filters)
+    "E702",  # multiple statements on one line (sometimes intentional)
+    "E741",  # ambiguous variable name (l, O, I)
+    "B008",  # function calls in default arguments (FastAPI Depends pattern)
+    "B904",  # raise from None (sometimes intentional)
+    "UP007", # X | Y union type (SQLAlchemy compat)
+    "UP006", # built-in type annotations (SQLAlchemy compat)
+]
+
+# Auto-fix safe rules
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# Test files can use assert and broad imports freely
+"backend/tests/**/*.py" = ["S101", "F401"]
+# Migration files are auto-generated
+"backend/alembic/**/*.py" = ["ALL"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "module"
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+# Markers
+markers = [
+    "unit: fast unit tests (no DB/network)",
+    "integration: tests that need running DB",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

@@ -20,12 +20,12 @@ Phase 2 — persist_attendance_batch()  [called as asyncio.create_task, after se
 
 Legacy: log_attendance() kept for backward compatibility (used in tests, scripts)
 """
+
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,16 +34,15 @@ from app.db.postgres import async_session_factory
 from app.db.redis import (
     check_attendance_cooldown,
     set_attendance_cooldown,
-    get_cooldown_seconds,
-    redis as _redis,
 )
 from app.models.orm import AttendanceLog
 
-logger   = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
 # ── Phase 1: Check & Reserve ──────────────────────────────────────────────────
+
 
 async def check_and_reserve(
     matches: list[tuple[str, str, float]],  # [(employee_id, station_id, confidence)]
@@ -65,16 +64,15 @@ async def check_and_reserve(
         return []
 
     # Parallel cooldown existence checks
-    in_cooldown_list: list[bool] = list(await asyncio.gather(*[
-        check_attendance_cooldown(emp_id, station_id)
-        for emp_id, station_id, _ in matches
-    ]))
+    in_cooldown_list: list[bool] = list(
+        await asyncio.gather(*[check_attendance_cooldown(emp_id, station_id) for emp_id, station_id, _ in matches])
+    )
 
     # Parallel cooldown SET for matches that will be logged
     # This is the "reservation" — prevents double-logging across frames
     reserve_tasks = [
         set_attendance_cooldown(emp_id, station_id)
-        for (emp_id, station_id, _), in_cd in zip(matches, in_cooldown_list)
+        for (emp_id, station_id, _), in_cd in zip(matches, in_cooldown_list, strict=False)
         if not in_cd
     ]
     if reserve_tasks:
@@ -84,6 +82,7 @@ async def check_and_reserve(
 
 
 # ── Phase 2: Persist (background task) ───────────────────────────────────────
+
 
 async def persist_attendance_batch(
     to_persist: list[dict],
@@ -116,7 +115,7 @@ async def persist_attendance_batch(
                 log = AttendanceLog(
                     employee_id=uuid.UUID(m["employee_id"]),
                     station_id=uuid.UUID(m["station_id"]),
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     confidence_score=m["confidence_score"],
                 )
                 db.add(log)
@@ -131,7 +130,7 @@ async def persist_attendance_batch(
                 if not face_crop:
                     return
                 try:
-                    today    = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    today = datetime.now(UTC).strftime("%Y-%m-%d")
                     snap_dir = Path(settings.storage_path) / "snapshots" / today
                     snap_dir.mkdir(parents=True, exist_ok=True)
                     snap_path = snap_dir / f"{log.id}.jpg"
@@ -149,10 +148,11 @@ async def persist_attendance_batch(
 
             for log, m in logs:
                 logger.info(
-                    "Attendance persisted: employee=%s station=%s "
-                    "confidence=%.3f log_id=%s snapshot=%s",
-                    m["employee_id"], m["station_id"],
-                    m["confidence_score"], log.id,
+                    "Attendance persisted: employee=%s station=%s " "confidence=%.3f log_id=%s snapshot=%s",
+                    m["employee_id"],
+                    m["station_id"],
+                    m["confidence_score"],
+                    log.id,
                     "yes" if m.get("face_crop_jpg") else "no",
                 )
 
@@ -165,13 +165,14 @@ async def persist_attendance_batch(
 
 # ── Legacy: single-record log (backward compat) ───────────────────────────────
 
+
 async def log_attendance(
     db: AsyncSession,
     employee_id: str,
     station_id: str,
     confidence_score: float,
-    face_crop_jpg: Optional[bytes] = None,
-) -> Optional[int]:
+    face_crop_jpg: bytes | None = None,
+) -> int | None:
     """
     Legacy single-record attendance log.
     Used by tests and one-off scripts.
@@ -187,7 +188,7 @@ async def log_attendance(
         log = AttendanceLog(
             employee_id=uuid.UUID(employee_id),
             station_id=uuid.UUID(station_id),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             confidence_score=confidence_score,
         )
         db.add(log)
@@ -195,8 +196,8 @@ async def log_attendance(
 
         if face_crop_jpg:
             try:
-                today     = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                snap_dir  = Path(settings.storage_path) / "snapshots" / today
+                today = datetime.now(UTC).strftime("%Y-%m-%d")
+                snap_dir = Path(settings.storage_path) / "snapshots" / today
                 snap_dir.mkdir(parents=True, exist_ok=True)
                 snap_path = snap_dir / f"{log.id}.jpg"
                 # FIX: run in executor — was blocking event loop with sync write_bytes
