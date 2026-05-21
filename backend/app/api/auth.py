@@ -1,6 +1,7 @@
 """
 Auth API — DB-backed login with bcrypt + JWT (role + station_ids in token)
 """
+
 import logging
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,12 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.security import (
-    verify_password, create_access_token,
-    get_current_user, CurrentUser,
+    verify_password,
+    create_access_token,
+    get_current_user,
+    CurrentUser,
 )
 from app.core.config import get_settings
 from app.db.postgres import get_db
-from app.models.orm import User, UserStation, SystemSetting
+from app.models.orm import User, SystemSetting
 from app.models.schemas import LoginRequest, TokenOut
 
 _config = get_settings()
@@ -68,11 +71,7 @@ async def get_me(
     Called on app load to ensure user still exists and is active.
     Returns 401 if user has been deactivated since token was issued.
     """
-    result = await db.execute(
-        select(User)
-        .options(selectinload(User.user_stations))
-        .where(User.id == current.user_id)
-    )
+    result = await db.execute(select(User).options(selectinload(User.user_stations)).where(User.id == current.user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -80,10 +79,10 @@ async def get_me(
         raise HTTPException(status_code=401, detail="Account has been deactivated")
 
     return {
-        "user_id":    str(user.id),
-        "username":   user.username,
-        "full_name":  user.full_name or "",
-        "role":       user.role,
-        "is_active":  user.is_active,
+        "user_id": str(user.id),
+        "username": user.username,
+        "full_name": user.full_name or "",
+        "role": user.role,
+        "is_active": user.is_active,
         "station_ids": [str(us.station_id) for us in user.user_stations],
     }

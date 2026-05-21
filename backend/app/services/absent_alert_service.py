@@ -19,10 +19,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
-from sqlalchemy import select, cast, Date, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, cast, Date
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +54,8 @@ async def _check_absences(redis) -> None:
     late_val = await redis.get("setting:late_threshold_minutes")
     late_threshold = int(late_val) if late_val else 15
 
-    today = datetime.now(timezone.utc).date()
-    now   = datetime.now(timezone.utc)
+    today = datetime.now(UTC).date()
+    now = datetime.now(UTC)
 
     notified_key = f"absent_notified:{today.isoformat()}"
 
@@ -71,14 +70,12 @@ async def _check_absences(redis) -> None:
 
         # Build set of employee_ids who checked in today
         checked_in = await db.execute(
-            select(AttendanceLog.employee_id)
-            .where(cast(AttendanceLog.timestamp, Date) == today)
-            .distinct()
+            select(AttendanceLog.employee_id).where(cast(AttendanceLog.timestamp, Date) == today).distinct()
         )
         checked_ids = {row[0] for row in checked_in}
 
     for emp, shift, dept_name in employees:
-        shift_start = datetime.combine(today, shift.start_time, tzinfo=timezone.utc)
+        shift_start = datetime.combine(today, shift.start_time, tzinfo=UTC)
         cutoff = shift_start + timedelta(minutes=late_threshold)
 
         if now < cutoff:
@@ -92,14 +89,14 @@ async def _check_absences(redis) -> None:
             continue
 
         event = {
-            "event":       "absent_alert",
+            "event": "absent_alert",
             "employee_id": str(emp.id),
-            "emp_code":    emp.emp_code,
-            "full_name":   emp.full_name,
-            "dept_name":   dept_name or "",
-            "shift_name":  shift.name,
+            "emp_code": emp.emp_code,
+            "full_name": emp.full_name,
+            "dept_name": dept_name or "",
+            "shift_name": shift.name,
             "shift_start": shift.start_time.strftime("%H:%M"),
-            "timestamp":   now.isoformat(),
+            "timestamp": now.isoformat(),
         }
         await redis.publish("omnisight:events", json.dumps(event))
         await redis.sadd(notified_key, str(emp.id))
@@ -107,5 +104,6 @@ async def _check_absences(redis) -> None:
 
         logger.info(
             "AbsentAlertService: absent_alert published for %s (%s)",
-            emp.full_name, emp.emp_code,
+            emp.full_name,
+            emp.emp_code,
         )

@@ -12,7 +12,8 @@ from app.core.face_engine import face_engine, anti_spoof_engine
 from app.core.security import require_hr, CurrentUser
 from app.db.redis import get_min_face_quality, get_anti_spoof_enabled, get_anti_spoof_threshold
 from qdrant_client.models import PointStruct, PointIdsList
-import uuid, shutil
+import uuid
+import shutil
 from pathlib import Path
 
 router = APIRouter()
@@ -26,9 +27,7 @@ async def get_enrollment_status(
     _: CurrentUser = Depends(require_hr),
 ):
     result = await db.execute(
-        select(Employee)
-        .options(selectinload(Employee.face_templates))
-        .where(Employee.id == employee_id)
+        select(Employee).options(selectinload(Employee.face_templates)).where(Employee.id == employee_id)
     )
     emp = result.scalar_one_or_none()
     if not emp:
@@ -39,12 +38,14 @@ async def get_enrollment_status(
     for i in range(6):
         if i in slot_map:
             t = slot_map[i]
-            slots.append(FaceTemplateOut(
-                sample_index=t.sample_index,
-                quality_score=t.quality_score,
-                created_at=t.created_at,
-                image_url=f"/api/v1/employees/{employee_id}/enroll/{i}/image",
-            ))
+            slots.append(
+                FaceTemplateOut(
+                    sample_index=t.sample_index,
+                    quality_score=t.quality_score,
+                    created_at=t.created_at,
+                    image_url=f"/api/v1/employees/{employee_id}/enroll/{i}/image",
+                )
+            )
         else:
             slots.append(None)
     return EnrollmentStatus(
@@ -64,9 +65,7 @@ async def get_face_image(
 ):
     """ดึงรูปใบหน้าที่ enroll ไว้ (auth required — รูปเป็น sensitive data)"""
     result = await db.execute(
-        select(Employee)
-        .options(selectinload(Employee.face_templates))
-        .where(Employee.id == employee_id)
+        select(Employee).options(selectinload(Employee.face_templates)).where(Employee.id == employee_id)
     )
     emp = result.scalar_one_or_none()
     if not emp:
@@ -96,9 +95,7 @@ async def upload_face_sample(
         raise HTTPException(400, "sample_index must be 0–5")
 
     result = await db.execute(
-        select(Employee)
-        .options(selectinload(Employee.face_templates))
-        .where(Employee.id == employee_id)
+        select(Employee).options(selectinload(Employee.face_templates)).where(Employee.id == employee_id)
     )
     emp = result.scalar_one_or_none()
     if not emp:
@@ -112,7 +109,8 @@ async def upload_face_sample(
         shutil.copyfileobj(file.file, f)
 
     # Extract embedding
-    import cv2, numpy as np
+    import cv2
+
     img = cv2.imread(str(img_path))
     embeddings = face_engine.get_embeddings(img)
     if not embeddings:
@@ -132,7 +130,7 @@ async def upload_face_sample(
                 raise HTTPException(
                     422,
                     f"Anti-spoofing failed — liveness score {spoof_score:.2f} < {threshold:.2f}. "
-                    "Use a live face in good lighting, not a photo or screen."
+                    "Use a live face in good lighting, not a photo or screen.",
                 )
 
     quality = face_engine.get_quality_score(img)
@@ -142,7 +140,7 @@ async def upload_face_sample(
         raise HTTPException(
             422,
             f"Face quality too low ({quality:.2f} < {min_quality:.2f}) — "
-            "ensure good lighting and face the camera directly"
+            "ensure good lighting and face the camera directly",
         )
 
     # Remove existing template for this slot if any

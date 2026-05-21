@@ -14,6 +14,7 @@ Performance architecture (Sprint 15):
   9. Prometheus metrics    — latency histograms, counters, gauges
  10. Dynamic worker scaling — executor resized without restart when setting changes
 """
+
 import asyncio
 import json
 import logging
@@ -32,38 +33,51 @@ from app.core.security import get_current_user_ws
 from app.core.face_engine import face_engine, anti_spoof_engine, crop_face_jpeg
 from app.core.tracker import FaceTracker
 from app.core.metrics import (
-    INF_DURATION, QDRANT_DURATION, SPOOF_DURATION,
-    FRAMES_RECEIVED, FRAMES_PROCESSED, FRAMES_DROPPED,
-    CACHE_HITS, CACHE_MISSES,
-    FACES_DETECTED, FACES_MATCHED, FACES_UNKNOWN, FACES_SPOOF,
-    ACTIVE_CAMERAS, INFERENCE_WORKERS, INFLIGHT_INFERENCES,
+    INF_DURATION,
+    QDRANT_DURATION,
+    SPOOF_DURATION,
+    FRAMES_RECEIVED,
+    FRAMES_PROCESSED,
+    FRAMES_DROPPED,
+    CACHE_HITS,
+    CACHE_MISSES,
+    FACES_DETECTED,
+    FACES_MATCHED,
+    FACES_UNKNOWN,
+    FACES_SPOOF,
+    ACTIVE_CAMERAS,
+    INFERENCE_WORKERS,
+    INFLIGHT_INFERENCES,
 )
 from app.db.postgres import async_session_factory
 from app.db.qdrant import qdrant as _async_qdrant
 from app.db.redis import (
-    get_station_filter, redis as _redis,
-    increment_unknown_count, get_unknown_alert_threshold,
-    get_anti_spoof_enabled, get_anti_spoof_threshold,
+    get_station_filter,
+    redis as _redis,
+    increment_unknown_count,
+    get_unknown_alert_threshold,
+    get_anti_spoof_enabled,
+    get_anti_spoof_threshold,
 )
 from app.models.orm import Employee, Department
 from app.models.schemas import BBox, FaceResult, ScanResult
 from app.services.attendance_service import check_and_reserve, persist_attendance_batch
 from app.services.camera_manager import camera_manager
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
-logger   = logging.getLogger(__name__)
-router   = APIRouter()
+logger = logging.getLogger(__name__)
+router = APIRouter()
 settings = get_settings()
 
 # ── Thread pool — CPU-only: detection, anti-spoof, decode, crop ───────────────
 # Dynamic scaling: the pool is swapped atomically when inference_workers changes.
 # asyncio.Lock prevents two coroutines from rebuilding the pool simultaneously.
-_executor:         ThreadPoolExecutor = ThreadPoolExecutor(
+_executor: ThreadPoolExecutor = ThreadPoolExecutor(
     max_workers=settings.inference_workers,
     thread_name_prefix="face-worker",
 )
-_executor_workers: int        = settings.inference_workers
-_executor_lock                = asyncio.Lock()
+_executor_workers: int = settings.inference_workers
+_executor_lock = asyncio.Lock()
 INFERENCE_WORKERS.set(settings.inference_workers)
 
 
@@ -77,27 +91,25 @@ async def _resize_executor_if_needed(new_size: int) -> None:
     if new_size == _executor_workers:
         return
     async with _executor_lock:
-        if new_size == _executor_workers:   # someone else already resized
+        if new_size == _executor_workers:  # someone else already resized
             return
         old = _executor
-        _executor = ThreadPoolExecutor(
-            max_workers=new_size, thread_name_prefix="face-worker"
-        )
+        _executor = ThreadPoolExecutor(max_workers=new_size, thread_name_prefix="face-worker")
         _executor_workers = new_size
         INFERENCE_WORKERS.set(new_size)
-        old.shutdown(wait=False)            # existing tasks finish; no new ones
+        old.shutdown(wait=False)  # existing tasks finish; no new ones
         logger.info(f"Executor resized → {new_size} workers")
 
 
 # ── Per-camera state (process lifetime) ──────────────────────────────────────
-_last_processed: dict[str, float]    = {}
-_trackers:       dict[str, FaceTracker] = {}
+_last_processed: dict[str, float] = {}
+_trackers: dict[str, FaceTracker] = {}
 
 # ── Global settings cache (5-second TTL, stampede-safe) ──────────────────────
-_cached_settings:    dict  = {}
+_cached_settings: dict = {}
 _cached_settings_ts: float = 0.0
-_SETTINGS_TTL:       float = 5.0
-_settings_lock               = asyncio.Lock()
+_SETTINGS_TTL: float = 5.0
+_settings_lock = asyncio.Lock()
 
 
 async def _get_max_fps() -> float:
@@ -146,11 +158,11 @@ async def _get_frame_settings() -> dict:
         )
         raw_cache_ttl = vals[6]
         _cached_settings = {
-            "max_fps":               vals[0],
-            "match_threshold":       vals[1],
-            "spoof_enabled":         vals[2] and anti_spoof_engine.available,
-            "spoof_threshold":       vals[3],
-            "unknown_threshold":     vals[4],
+            "max_fps": vals[0],
+            "match_threshold": vals[1],
+            "spoof_enabled": vals[2] and anti_spoof_engine.available,
+            "spoof_threshold": vals[3],
+            "unknown_threshold": vals[4],
             # recognition_cache_ttl: how long a Qdrant result is reused per tracking_id
             # Default 30 s — safe because if the person leaves, the track expires in 2 s
             # and the next person gets a fresh tracking_id → fresh Qdrant search.
@@ -169,7 +181,7 @@ async def _get_frame_settings() -> dict:
 async def scan_ws(
     websocket: WebSocket,
     station_id: str,
-    token:     str = Query(default=""),
+    token: str = Query(default=""),
     camera_id: str = Query(default=""),
 ):
     # ── Auth ─────────────────────────────────────────────────────────────────
@@ -184,7 +196,7 @@ async def scan_ws(
         return
 
     if not camera_id:
-        prefix    = "sm" if user.role == "OPERATOR" else "wc"
+        prefix = "sm" if user.role == "OPERATOR" else "wc"
         camera_id = f"{prefix}-{user.user_id[:6]}-{station_id[:6]}"
 
     camera_type = "SMARTPHONE" if user.role == "OPERATOR" else "WEBCAM"
@@ -193,8 +205,10 @@ async def scan_ws(
     logger.info(f"WS connected: camera={camera_id} station={station_id} user={user.username}")
 
     await camera_manager.register(
-        camera_id=camera_id, station_id=station_id,
-        camera_type=camera_type, websocket=websocket,
+        camera_id=camera_id,
+        station_id=station_id,
+        camera_type=camera_type,
+        websocket=websocket,
     )
     ACTIVE_CAMERAS.inc()
 
@@ -210,7 +224,7 @@ async def scan_ws(
             if conn and conn.status == "paused":
                 continue
 
-            cfg          = await _get_frame_settings()
+            cfg = await _get_frame_settings()
             min_interval = 1.0 / cfg["max_fps"]
 
             now = time.monotonic()
@@ -221,10 +235,8 @@ async def scan_ws(
             FRAMES_PROCESSED.inc()
 
             # Decode JPEG in executor
-            arr   = np.frombuffer(raw, np.uint8)
-            frame = await loop.run_in_executor(
-                _executor, cv2.imdecode, arr, cv2.IMREAD_COLOR
-            )
+            arr = np.frombuffer(raw, np.uint8)
+            frame = await loop.run_in_executor(_executor, cv2.imdecode, arr, cv2.IMREAD_COLOR)
             if frame is None:
                 continue
 
@@ -232,9 +244,7 @@ async def scan_ws(
             INFLIGHT_INFERENCES.inc()
             t0 = time.perf_counter()
             try:
-                detections = await loop.run_in_executor(
-                    _executor, face_engine.get_detections, frame
-                )
+                detections = await loop.run_in_executor(_executor, face_engine.get_detections, frame)
             finally:
                 INF_DURATION.observe(time.perf_counter() - t0)
                 INFLIGHT_INFERENCES.dec()
@@ -243,8 +253,7 @@ async def scan_ws(
 
             if not detections:
                 await websocket.send_text(
-                    ScanResult(timestamp=datetime.now(timezone.utc),
-                               camera_id=camera_id, faces=[]).model_dump_json()
+                    ScanResult(timestamp=datetime.now(UTC), camera_id=camera_id, faces=[]).model_dump_json()
                 )
                 continue
 
@@ -252,19 +261,17 @@ async def scan_ws(
             tracker = _trackers.setdefault(camera_id, FaceTracker())
             tracked = tracker.update([(emb, bbox) for _, emb, bbox in detections])
 
-            dept_ids      = await get_station_filter(station_id)
+            dept_ids = await get_station_filter(station_id)
             qdrant_filter = (
-                Filter(must=[FieldCondition(key="dept_id",
-                                           match=MatchAny(any=dept_ids))])
-                if dept_ids else None
+                Filter(must=[FieldCondition(key="dept_id", match=MatchAny(any=dept_ids))]) if dept_ids else None
             )
 
             match_threshold = cfg["match_threshold"]
-            spoof_enabled   = cfg["spoof_enabled"]
+            spoof_enabled = cfg["spoof_enabled"]
             spoof_threshold = cfg["spoof_threshold"]
 
             # ── Step 1: cached vs needs full pipeline ─────────────────────────
-            faces:      list[FaceResult] = []
+            faces: list[FaceResult] = []
             to_process: list[tuple[int, np.ndarray, list[int]]] = []
 
             cache_ttl = cfg["recognition_cache_ttl"]
@@ -272,21 +279,22 @@ async def scan_ws(
                 cached = tracker.get_cached_result(tid, ttl=cache_ttl)
                 if cached is not None:
                     CACHE_HITS.inc()
-                    faces.append(cached.model_copy(update={
-                        "tracking_id":       tid,
-                        "bbox":              BBox(x=bbox[0], y=bbox[1],
-                                                  w=bbox[2]-bbox[0],
-                                                  h=bbox[3]-bbox[1]),
-                        "attendance_logged": False,
-                    }))
+                    faces.append(
+                        cached.model_copy(
+                            update={
+                                "tracking_id": tid,
+                                "bbox": BBox(x=bbox[0], y=bbox[1], w=bbox[2] - bbox[0], h=bbox[3] - bbox[1]),
+                                "attendance_logged": False,
+                            }
+                        )
+                    )
                 else:
                     CACHE_MISSES.inc()
                     to_process.append((tid, emb, bbox))
 
             if not to_process:
                 await websocket.send_text(
-                    ScanResult(timestamp=datetime.now(timezone.utc),
-                               camera_id=camera_id, faces=faces).model_dump_json()
+                    ScanResult(timestamp=datetime.now(UTC), camera_id=camera_id, faces=faces).model_dump_json()
                 )
                 continue
 
@@ -294,9 +302,7 @@ async def scan_ws(
             if spoof_enabled:
                 t0 = time.perf_counter()
                 bboxes = [b for _, _, b in to_process]
-                scores = await loop.run_in_executor(
-                    _executor, anti_spoof_engine.predict_batch, frame, bboxes
-                )
+                scores = await loop.run_in_executor(_executor, anti_spoof_engine.predict_batch, frame, bboxes)
                 SPOOF_DURATION.observe(time.perf_counter() - t0)
                 spoof_checks = [(s >= spoof_threshold, s) for s in scores]
             else:
@@ -310,21 +316,30 @@ async def scan_ws(
                     FACES_SPOOF.inc()
                     logger.warning(
                         "Anti-spoof REJECTED: camera=%s score=%.3f threshold=%.3f",
-                        camera_id, score, spoof_threshold,
+                        camera_id,
+                        score,
+                        spoof_threshold,
                     )
                     r = FaceResult(
-                        tracking_id=tid, status="spoof", confidence=score,
-                        bbox=BBox(x=bbox[0], y=bbox[1],
-                                  w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
+                        tracking_id=tid,
+                        status="spoof",
+                        confidence=score,
+                        bbox=BBox(x=bbox[0], y=bbox[1], w=bbox[2] - bbox[0], h=bbox[3] - bbox[1]),
                         attendance_logged=False,
                     )
                     tracker.set_result(tid, r)
                     faces.append(r)
-                    await _redis.publish("omnisight:events", json.dumps({
-                        "event": "spoof_detected", "station_id": station_id,
-                        "camera_id": camera_id,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }))
+                    await _redis.publish(
+                        "omnisight:events",
+                        json.dumps(
+                            {
+                                "event": "spoof_detected",
+                                "station_id": station_id,
+                                "camera_id": camera_id,
+                                "timestamp": datetime.now(UTC).isoformat(),
+                            }
+                        ),
+                    )
                 else:
                     live.append((tid, emb, bbox))
 
@@ -349,8 +364,8 @@ async def scan_ws(
                 batch_results = []
 
             # ── Step 5: matches vs unknowns ────────────────────────────────────
-            matches:  list[tuple[int, list[int], str, float]] = []
-            unknowns: list[tuple[int, list[int]]]             = []
+            matches: list[tuple[int, list[int], str, float]] = []
+            unknowns: list[tuple[int, list[int]]] = []
             for i, (tid, _, bbox) in enumerate(live):
                 hits = batch_results[i] if i < len(batch_results) else []
                 if hits:
@@ -368,12 +383,12 @@ async def scan_ws(
                     )
                     emp_map = {str(row[0].id): row for row in emp_result.all()}
 
-                crops = await asyncio.gather(*[
-                    loop.run_in_executor(
-                        _executor, partial(crop_face_jpeg, frame, bbox)
-                    )
-                    for _, bbox, _, _ in matches
-                ])
+                crops = await asyncio.gather(
+                    *[
+                        loop.run_in_executor(_executor, partial(crop_face_jpeg, frame, bbox))
+                        for _, bbox, _, _ in matches
+                    ]
+                )
             else:
                 emp_map, crops = {}, []
 
@@ -382,45 +397,54 @@ async def scan_ws(
             # • EXISTS cooldown × N  → parallel gather
             # • SET cooldown × N     → parallel gather (set NOW, before DB write)
             # attendance_logged in FaceResult is ACCURATE because slot is reserved
-            match_tuples  = [(emp_id, station_id, conf) for _, _, emp_id, conf in matches]
+            match_tuples = [(emp_id, station_id, conf) for _, _, emp_id, conf in matches]
             will_log_list = await check_and_reserve(match_tuples) if matches else []
 
             # Build FaceResult for matches
-            persist_list:      list[dict] = []
+            persist_list: list[dict] = []
             broadcast_matches: list[dict] = []
 
             for i, (tid, bbox, emp_id, confidence) in enumerate(matches):
-                row       = emp_map.get(emp_id)
+                row = emp_map.get(emp_id)
                 full_name = row[0].full_name or "" if row else ""
-                emp_code  = row[0].emp_code        if row else None
-                dept_name = row[1]                 if row else None
-                will_log  = will_log_list[i] if i < len(will_log_list) else False
+                emp_code = row[0].emp_code if row else None
+                dept_name = row[1] if row else None
+                will_log = will_log_list[i] if i < len(will_log_list) else False
 
                 FACES_MATCHED.inc()
                 r = FaceResult(
-                    tracking_id=tid, status="match",
-                    employee_id=emp_id, full_name=full_name,
-                    emp_code=emp_code, dept_name=dept_name,
+                    tracking_id=tid,
+                    status="match",
+                    employee_id=emp_id,
+                    full_name=full_name,
+                    emp_code=emp_code,
+                    dept_name=dept_name,
                     confidence=confidence,
-                    bbox=BBox(x=bbox[0], y=bbox[1],
-                              w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
+                    bbox=BBox(x=bbox[0], y=bbox[1], w=bbox[2] - bbox[0], h=bbox[3] - bbox[1]),
                     attendance_logged=will_log,
                 )
                 tracker.set_result(tid, r)
                 faces.append(r)
 
                 if will_log:
-                    persist_list.append({
-                        "employee_id":      emp_id,
-                        "station_id":       station_id,
-                        "confidence_score": confidence,
-                        "face_crop_jpg":    crops[i] if crops else None,
-                    })
-                broadcast_matches.append({
-                    "employee_id": emp_id, "full_name": full_name,
-                    "emp_code": emp_code,  "dept_name": dept_name,
-                    "confidence": confidence, "logged": will_log,
-                })
+                    persist_list.append(
+                        {
+                            "employee_id": emp_id,
+                            "station_id": station_id,
+                            "confidence_score": confidence,
+                            "face_crop_jpg": crops[i] if crops else None,
+                        }
+                    )
+                broadcast_matches.append(
+                    {
+                        "employee_id": emp_id,
+                        "full_name": full_name,
+                        "emp_code": emp_code,
+                        "dept_name": dept_name,
+                        "confidence": confidence,
+                        "logged": will_log,
+                    }
+                )
 
             # ── Step 8: unknowns ───────────────────────────────────────────────
             unknown_publishes: list[dict] = []
@@ -428,38 +452,40 @@ async def scan_ws(
                 FACES_UNKNOWN.inc()
                 unknown_count = await increment_unknown_count(station_id)
                 r = FaceResult(
-                    tracking_id=tid, status="unknown", confidence=0.0,
-                    bbox=BBox(x=bbox[0], y=bbox[1],
-                              w=bbox[2]-bbox[0], h=bbox[3]-bbox[1]),
+                    tracking_id=tid,
+                    status="unknown",
+                    confidence=0.0,
+                    bbox=BBox(x=bbox[0], y=bbox[1], w=bbox[2] - bbox[0], h=bbox[3] - bbox[1]),
                     attendance_logged=False,
                 )
                 tracker.set_result(tid, r)
                 faces.append(r)
-                unknown_publishes.append({
-                    "count": unknown_count,
-                    "bbox":  {"x": bbox[0], "y": bbox[1],
-                              "w": bbox[2]-bbox[0], "h": bbox[3]-bbox[1]},
-                })
+                unknown_publishes.append(
+                    {
+                        "count": unknown_count,
+                        "bbox": {"x": bbox[0], "y": bbox[1], "w": bbox[2] - bbox[0], "h": bbox[3] - bbox[1]},
+                    }
+                )
 
             # ── SEND result FIRST — end of critical path ───────────────────────
             await websocket.send_text(
-                ScanResult(timestamp=datetime.now(timezone.utc),
-                           camera_id=camera_id, faces=faces).model_dump_json()
+                ScanResult(timestamp=datetime.now(UTC), camera_id=camera_id, faces=faces).model_dump_json()
             )
 
             # ── Step 9 (Phase 2): Background persist + broadcast ───────────────
             # create_task → fire-and-forget, next frame starts immediately
-            asyncio.create_task(_persist_and_broadcast(
-                persist_list=persist_list,
-                broadcast_matches=broadcast_matches,
-                unknown_publishes=unknown_publishes,
-                station_id=station_id,
-                camera_id=camera_id,
-                cfg=cfg,
-                ts=datetime.now(timezone.utc).isoformat(),
-                emp_map_snapshot={k: (v[0].full_name, v[0].emp_code, v[1])
-                                  for k, v in emp_map.items()},
-            ))
+            asyncio.create_task(
+                _persist_and_broadcast(
+                    persist_list=persist_list,
+                    broadcast_matches=broadcast_matches,
+                    unknown_publishes=unknown_publishes,
+                    station_id=station_id,
+                    camera_id=camera_id,
+                    cfg=cfg,
+                    ts=datetime.now(UTC).isoformat(),
+                    emp_map_snapshot={k: (v[0].full_name, v[0].emp_code, v[1]) for k, v in emp_map.items()},
+                )
+            )
 
     except WebSocketDisconnect:
         logger.info(f"WS disconnected: camera={camera_id}")
@@ -478,15 +504,16 @@ async def scan_ws(
 
 # ── Background task: persist + broadcast (Phase 2) ───────────────────────────
 
+
 async def _persist_and_broadcast(
-    persist_list:      list[dict],
+    persist_list: list[dict],
     broadcast_matches: list[dict],
     unknown_publishes: list[dict],
-    station_id:        str,
-    camera_id:         str,
-    cfg:               dict,
-    ts:                str,
-    emp_map_snapshot:  dict,   # {emp_id: (full_name, emp_code, dept_name)}
+    station_id: str,
+    camera_id: str,
+    cfg: dict,
+    ts: str,
+    emp_map_snapshot: dict,  # {emp_id: (full_name, emp_code, dept_name)}
 ) -> None:
     """
     Phase 2 — runs AFTER send_text(), never delays frontend response.
@@ -510,43 +537,58 @@ async def _persist_and_broadcast(
         for m in broadcast_matches:
             match_tasks.append(
                 camera_manager.broadcast_attendance(
-                    camera_id=camera_id, station_id=station_id,
-                    employee_id=m["employee_id"], full_name=m["full_name"],
-                    confidence=m["confidence"], logged=m["logged"],
+                    camera_id=camera_id,
+                    station_id=station_id,
+                    employee_id=m["employee_id"],
+                    full_name=m["full_name"],
+                    confidence=m["confidence"],
+                    logged=m["logged"],
                 )
             )
             if m["logged"]:
                 publish_tasks.append(
-                    _redis.publish("omnisight:events", json.dumps({
-                        "event":       "attendance_match",
-                        "station_id":  station_id,
-                        "camera_id":   camera_id,
-                        "employee_id": m["employee_id"],
-                        "full_name":   m["full_name"],
-                        "emp_code":    m["emp_code"],
-                        "dept_name":   m["dept_name"],
-                        "confidence":  round(m["confidence"], 4),
-                        "timestamp":   ts,
-                    }))
+                    _redis.publish(
+                        "omnisight:events",
+                        json.dumps(
+                            {
+                                "event": "attendance_match",
+                                "station_id": station_id,
+                                "camera_id": camera_id,
+                                "employee_id": m["employee_id"],
+                                "full_name": m["full_name"],
+                                "emp_code": m["emp_code"],
+                                "dept_name": m["dept_name"],
+                                "confidence": round(m["confidence"], 4),
+                                "timestamp": ts,
+                            }
+                        ),
+                    )
                 )
 
         # ── Broadcast + publish unknowns in parallel ──────────────────────────
         for u in unknown_publishes:
             match_tasks.append(
                 camera_manager.broadcast_unknown(
-                    camera_id=camera_id, station_id=station_id, bbox=u["bbox"],
+                    camera_id=camera_id,
+                    station_id=station_id,
+                    bbox=u["bbox"],
                 )
             )
             if u["count"] >= cfg["unknown_threshold"]:
                 publish_tasks.append(
-                    _redis.publish("omnisight:events", json.dumps({
-                        "event":     "unknown_face_alert",
-                        "station_id": station_id,
-                        "camera_id":  camera_id,
-                        "count":      u["count"],
-                        "threshold":  cfg["unknown_threshold"],
-                        "timestamp":  ts,
-                    }))
+                    _redis.publish(
+                        "omnisight:events",
+                        json.dumps(
+                            {
+                                "event": "unknown_face_alert",
+                                "station_id": station_id,
+                                "camera_id": camera_id,
+                                "count": u["count"],
+                                "threshold": cfg["unknown_threshold"],
+                                "timestamp": ts,
+                            }
+                        ),
+                    )
                 )
 
         # Run all IO in parallel

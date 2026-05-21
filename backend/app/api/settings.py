@@ -2,9 +2,10 @@
 System Settings API — Live Config (ADMIN only)
 เปลี่ยน setting มีผลทันที ไม่ต้อง restart
 """
+
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -21,41 +22,41 @@ router = APIRouter()
 # Settings ที่มีผลทันที vs ต้องการ graceful restart
 LIVENESS = {
     # Security
-    "access_token_expire_hours": "graceful",   # new tokens only
+    "access_token_expire_hours": "graceful",  # new tokens only
     # Face Recognition
-    "match_threshold":    "live",
-    "min_face_quality":   "live",
+    "match_threshold": "live",
+    "min_face_quality": "live",
     # Attendance
-    "cooldown_seconds":   "live",
+    "cooldown_seconds": "live",
     "unknown_face_alert": "live",
     # Performance
-    "max_fps_per_camera":        "live",
-    "recognition_cache_ttl":    "live",    # picked up at next settings cache refresh (≤5 s)
-    "inference_workers":        "restart",
-    "face_detect_size":         "restart",
+    "max_fps_per_camera": "live",
+    "recognition_cache_ttl": "live",  # picked up at next settings cache refresh (≤5 s)
+    "inference_workers": "restart",
+    "face_detect_size": "restart",
 }
 
 # ── Value validators ────────────────────────────────────────────────────────
 # (type, min, max)  or  (type, [allowed_values])
 # String settings (webhook URLs, tokens, etc.) ไม่ต้อง validate ค่า
 _VALIDATORS: dict[str, tuple] = {
-    "access_token_expire_hours": ("int",   1,    720),
-    "match_threshold":           ("float", 0.1,  1.0),
-    "min_face_quality":          ("float", 0.1,  1.0),
-    "cooldown_seconds":          ("int",   10,   86400),
-    "unknown_face_alert":        ("int",   1,    1000),
-    "late_threshold_minutes":    ("int",   0,    480),
-    "max_fps_per_camera":        ("int",   1,    30),
-    "inference_workers":         ("int",   1,    32),
-    "recognition_cache_ttl":     ("int",   5,    300),    # seconds to reuse Qdrant result per tracking_id
-    "face_detect_size":          ("int",   [320, 640]),   # only valid ONNX sizes
-    "anti_spoof_enabled":        ("int",   [0,   1]),
-    "anti_spoof_threshold":      ("float", 0.1,  1.0),
-    "notify_on_checkin":         ("int",   [0,   1]),
-    "notify_on_unknown":         ("int",   [0,   1]),
-    "notify_on_spoof":           ("int",   [0,   1]),
-    "notify_on_absent":          ("int",   [0,   1]),
-    "email_smtp_port":           ("int",   1,    65535),
+    "access_token_expire_hours": ("int", 1, 720),
+    "match_threshold": ("float", 0.1, 1.0),
+    "min_face_quality": ("float", 0.1, 1.0),
+    "cooldown_seconds": ("int", 10, 86400),
+    "unknown_face_alert": ("int", 1, 1000),
+    "late_threshold_minutes": ("int", 0, 480),
+    "max_fps_per_camera": ("int", 1, 30),
+    "inference_workers": ("int", 1, 32),
+    "recognition_cache_ttl": ("int", 5, 300),  # seconds to reuse Qdrant result per tracking_id
+    "face_detect_size": ("int", [320, 640]),  # only valid ONNX sizes
+    "anti_spoof_enabled": ("int", [0, 1]),
+    "anti_spoof_threshold": ("float", 0.1, 1.0),
+    "notify_on_checkin": ("int", [0, 1]),
+    "notify_on_unknown": ("int", [0, 1]),
+    "notify_on_spoof": ("int", [0, 1]),
+    "notify_on_absent": ("int", [0, 1]),
+    "email_smtp_port": ("int", 1, 65535),
 }
 
 
@@ -68,7 +69,7 @@ def _validate_value(key: str, raw: str) -> str:
     """
     spec = _VALIDATORS.get(key)
     if not spec:
-        return raw   # URL / token / email — ไม่ validate ค่า
+        return raw  # URL / token / email — ไม่ validate ค่า
 
     vtype, *rest = spec
     try:
@@ -132,7 +133,7 @@ async def update_setting(
     clean_value = _validate_value(key, str(body.value))
     s.value = clean_value
     s.updated_by = current.user_id
-    s.updated_at = datetime.now(timezone.utc)
+    s.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(s)
 
@@ -140,12 +141,17 @@ async def update_setting(
     try:
         await redis.set(f"setting:{key}", str(body.value))
         # Publish config_changed event → all backend instances + Pilot Console
-        await redis.publish("omnisight:events", json.dumps({
-            "event": "config_changed",
-            "key": key,
-            "value": str(body.value),
-            "updated_by": current.username,
-        }))
+        await redis.publish(
+            "omnisight:events",
+            json.dumps(
+                {
+                    "event": "config_changed",
+                    "key": key,
+                    "value": str(body.value),
+                    "updated_by": current.username,
+                }
+            ),
+        )
     except Exception as e:
         logger.warning(f"Redis publish failed for setting {key}: {e}")
 

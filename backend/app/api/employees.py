@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.db.postgres import get_db
-from app.models.orm import Employee, FaceTemplate
+from app.models.orm import Employee
 from app.models.schemas import EmployeeCreate, EmployeeOut
 from app.core.security import require_hr, CurrentUser
 import uuid
@@ -17,9 +17,7 @@ async def list_employees(
     _: CurrentUser = Depends(require_hr),
 ):
     result = await db.execute(
-        select(Employee)
-        .options(selectinload(Employee.face_templates))
-        .order_by(Employee.emp_code)
+        select(Employee).options(selectinload(Employee.face_templates)).order_by(Employee.emp_code)
     )
     employees = result.scalars().all()
     return [_enrich(e) for e in employees]
@@ -45,9 +43,7 @@ async def get_employee(
     _: CurrentUser = Depends(require_hr),
 ):
     result = await db.execute(
-        select(Employee)
-        .options(selectinload(Employee.face_templates))
-        .where(Employee.id == employee_id)
+        select(Employee).options(selectinload(Employee.face_templates)).where(Employee.id == employee_id)
     )
     emp = result.scalar_one_or_none()
     if not emp:
@@ -63,9 +59,7 @@ async def update_employee(
     _: CurrentUser = Depends(require_hr),
 ):
     result = await db.execute(
-        select(Employee)
-        .options(selectinload(Employee.face_templates))
-        .where(Employee.id == employee_id)
+        select(Employee).options(selectinload(Employee.face_templates)).where(Employee.id == employee_id)
     )
     emp = result.scalar_one_or_none()
     if not emp:

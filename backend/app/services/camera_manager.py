@@ -5,12 +5,12 @@ CameraManager — Single Source of Truth for camera connection state
 - Relay commands: pause / resume / disconnect
 - Publish events → Redis Pub/Sub → Pilot Console
 """
+
 import asyncio
 import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from app.db.redis import redis
 
@@ -19,15 +19,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CameraConnection:
-    camera_id:    str
-    station_id:   str
-    camera_type:  str          # WEBCAM | IP_CAMERA | CCTV | SMARTPHONE
-    websocket:    object       # FastAPI WebSocket
+    camera_id: str
+    station_id: str
+    camera_type: str  # WEBCAM | IP_CAMERA | CCTV | SMARTPHONE
+    websocket: object  # FastAPI WebSocket
     connected_at: float = field(default_factory=time.monotonic)
-    last_frame:   float = field(default_factory=time.monotonic)
-    frame_count:  int = 0
-    fps:          float = 0.0
-    status:       str = "active"   # active | paused | offline
+    last_frame: float = field(default_factory=time.monotonic)
+    frame_count: int = 0
+    fps: float = 0.0
+    status: str = "active"  # active | paused | offline
 
 
 class CameraManager:
@@ -43,21 +43,20 @@ class CameraManager:
 
     # ─── Register / Deregister ────────────────────────────────────────────────
 
-    async def register(self, camera_id: str, station_id: str,
-                       camera_type: str, websocket) -> CameraConnection:
+    async def register(self, camera_id: str, station_id: str, camera_type: str, websocket) -> CameraConnection:
         async with self._lock:
             # C-001: Duplicate camera_id — kick old connection (last-writer-wins)
             old = self._connections.get(camera_id)
             if old:
                 try:
-                    await old.websocket.close(code=4409,
-                                              reason="Replaced by new connection")
+                    await old.websocket.close(code=4409, reason="Replaced by new connection")
                 except Exception:
                     pass
                 logger.info(f"Camera {camera_id}: old connection replaced")
 
-            conn = CameraConnection(camera_id=camera_id, station_id=station_id,
-                                    camera_type=camera_type, websocket=websocket)
+            conn = CameraConnection(
+                camera_id=camera_id, station_id=station_id, camera_type=camera_type, websocket=websocket
+            )
             self._connections[camera_id] = conn
 
         # Persist to Redis
@@ -68,12 +67,14 @@ class CameraManager:
         except Exception:
             pass
 
-        await self._publish({
-            "event":       "camera_connected",
-            "camera_id":   camera_id,
-            "station_id":  station_id,
-            "camera_type": camera_type,
-        })
+        await self._publish(
+            {
+                "event": "camera_connected",
+                "camera_id": camera_id,
+                "station_id": station_id,
+                "camera_type": camera_type,
+            }
+        )
         logger.info(f"Camera registered: {camera_id} @ station={station_id}")
         return conn
 
@@ -88,12 +89,14 @@ class CameraManager:
                 await redis.srem("cameras:active", camera_id)
             except Exception:
                 pass
-            await self._publish({
-                "event":     "camera_disconnected",
-                "camera_id": camera_id,
-                "station_id": conn.station_id,
-                "frame_count": conn.frame_count,
-            })
+            await self._publish(
+                {
+                    "event": "camera_disconnected",
+                    "camera_id": camera_id,
+                    "station_id": conn.station_id,
+                    "frame_count": conn.frame_count,
+                }
+            )
             logger.info(f"Camera deregistered: {camera_id}")
 
     # ─── Commands ─────────────────────────────────────────────────────────────
@@ -130,9 +133,7 @@ class CameraManager:
         conn = self._connections.get(camera_id)
         if conn:
             try:
-                await conn.websocket.send_text(json.dumps({
-                    "action": "disconnect", "reason": reason
-                }))
+                await conn.websocket.send_text(json.dumps({"action": "disconnect", "reason": reason}))
                 await conn.websocket.close(code=4000, reason=reason)
             except Exception:
                 pass
@@ -159,7 +160,7 @@ class CameraManager:
         elapsed = now - conn.last_frame
         if elapsed > 0:
             instant_fps = 1.0 / elapsed
-            conn.fps = 0.8 * conn.fps + 0.2 * instant_fps   # EMA
+            conn.fps = 0.8 * conn.fps + 0.2 * instant_fps  # EMA
         conn.last_frame = now
         conn.frame_count += 1
 
@@ -173,8 +174,8 @@ class CameraManager:
         if not conn:
             return {"status": "offline", "fps": 0.0, "frame_count": 0}
         return {
-            "status":      conn.status,
-            "fps":         round(conn.fps, 2),
+            "status": conn.status,
+            "fps": round(conn.fps, 2),
             "frame_count": conn.frame_count,
             "connected_at": conn.connected_at,
         }
@@ -182,11 +183,11 @@ class CameraManager:
     def list_active(self) -> list[dict]:
         return [
             {
-                "camera_id":   c.camera_id,
-                "station_id":  c.station_id,
+                "camera_id": c.camera_id,
+                "station_id": c.station_id,
                 "camera_type": c.camera_type,
-                "status":      c.status,
-                "fps":         round(c.fps, 2),
+                "status": c.status,
+                "fps": round(c.fps, 2),
                 "frame_count": c.frame_count,
             }
             for c in self._connections.values()
@@ -194,26 +195,30 @@ class CameraManager:
 
     # ─── Pilot Console Broadcasting ───────────────────────────────────────────
 
-    async def broadcast_attendance(self, camera_id: str, station_id: str,
-                                   employee_id: str, full_name: str,
-                                   confidence: float, logged: bool):
+    async def broadcast_attendance(
+        self, camera_id: str, station_id: str, employee_id: str, full_name: str, confidence: float, logged: bool
+    ):
         event_name = "attendance_logged" if logged else "attendance_cooldown"
-        await self._publish({
-            "event":       event_name,
-            "camera_id":   camera_id,
-            "station_id":  station_id,
-            "employee_id": employee_id,
-            "full_name":   full_name,
-            "confidence":  round(confidence, 4),
-        })
+        await self._publish(
+            {
+                "event": event_name,
+                "camera_id": camera_id,
+                "station_id": station_id,
+                "employee_id": employee_id,
+                "full_name": full_name,
+                "confidence": round(confidence, 4),
+            }
+        )
 
     async def broadcast_unknown(self, camera_id: str, station_id: str, bbox: dict):
-        await self._publish({
-            "event":      "unknown_face",
-            "camera_id":  camera_id,
-            "station_id": station_id,
-            "bbox":       bbox,
-        })
+        await self._publish(
+            {
+                "event": "unknown_face",
+                "camera_id": camera_id,
+                "station_id": station_id,
+                "bbox": bbox,
+            }
+        )
 
     # ─── Heartbeat Monitor ────────────────────────────────────────────────────
 
@@ -230,11 +235,13 @@ class CameraManager:
                     logger.warning(f"Camera {cam_id} idle {idle:.0f}s → marking offline")
                     conn.status = "offline"
                     await self._redis_set_status(cam_id, "offline")
-                    await self._publish({
-                        "event":     "camera_offline",
-                        "camera_id": cam_id,
-                        "idle_seconds": round(idle),
-                    })
+                    await self._publish(
+                        {
+                            "event": "camera_offline",
+                            "camera_id": cam_id,
+                            "idle_seconds": round(idle),
+                        }
+                    )
 
     # ─── Internal Helpers ─────────────────────────────────────────────────────
 

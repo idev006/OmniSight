@@ -1,18 +1,15 @@
 """
 Security utilities: password hashing, JWT creation/verification, FastAPI dependencies
 """
-from datetime import datetime, timedelta, timezone
-from typing import Optional
 
-from fastapi import Depends, HTTPException, status, Query
+from datetime import datetime, timedelta, UTC
+
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.db.postgres import get_db
 
 settings = get_settings()
 
@@ -20,8 +17,10 @@ settings = get_settings()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 def hash_password(plain: str) -> str:
     return pwd_context.hash(plain)
+
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
@@ -29,11 +28,12 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ─── JWT ──────────────────────────────────────────────────────────────────────
 
-def create_access_token(sub: str, role: str, user_id: str,
-                        station_ids: list[str] | None = None,
-                        expire_hours: int | None = None) -> str:
+
+def create_access_token(
+    sub: str, role: str, user_id: str, station_ids: list[str] | None = None, expire_hours: int | None = None
+) -> str:
     hours = expire_hours if expire_hours is not None else settings.access_token_expire_hours
-    exp = datetime.now(timezone.utc) + timedelta(hours=hours)
+    exp = datetime.now(UTC) + timedelta(hours=hours)
     payload = {
         "sub": sub,
         "role": role,
@@ -57,8 +57,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class CurrentUser:
-    def __init__(self, user_id: str, username: str, role: str,
-                 station_ids: list[str]):
+    def __init__(self, user_id: str, username: str, role: str, station_ids: list[str]):
         self.user_id = user_id
         self.username = username
         self.role = role
@@ -79,7 +78,7 @@ class CurrentUser:
 
 
 async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> CurrentUser:
     if not credentials:
         raise HTTPException(status_code=401, detail="Not authenticated")
