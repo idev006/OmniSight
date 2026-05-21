@@ -278,8 +278,8 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 - Repository: https://github.com/idev006/OmniSight
 - Branch: master
-- Latest push: Sprint 20c (`98b52c6`) — team setup + README rewrite
-- All sprints through Sprint 20c: **pushed ✅**
+- Latest push: Sprint 23 (`0e8834a`) — Thai font PDF + monthly PDF + unit tests
+- All sprints through Sprint 23: **pushed ✅**
 - .gitignore excludes: `my_env/`, `storage/`, `frontend/node_modules/`, `models/`, `data/`, `backups/`
 - `backend/.env` is now **tracked** (localhost defaults only — no real secrets)
 
