@@ -16,7 +16,7 @@ echo   Done
 echo.
 
 echo [1/2] Starting Backend  (http://localhost:8000)
-echo [2/2] Starting Frontend (http://localhost:5173)
+echo [2/2] Starting Frontend (https://localhost:5173)
 echo.
 
 REM NOTE: alembic upgrade was removed from here.
@@ -27,6 +27,7 @@ start "OmniSight Frontend" cmd /k "cd /d "%~dp0frontend" && npm run dev -- --ope
 
 echo Both services started in separate windows.
 echo Frontend will open in your browser automatically.
+echo If your browser asks, accept the local development certificate warning.
 echo.
 echo Press any key to close this launcher window.
 pause >nul
