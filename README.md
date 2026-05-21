@@ -1,219 +1,264 @@
-# 👁️ OmniSight — AI Face Recognition Attendance System
+# OmniSight — AI Face Recognition Attendance System
 
-ระบบลงเวลางานด้วย Face Recognition สำหรับองค์กร, โรงเรียน และงาน Event  
-พัฒนาด้วย FastAPI + Vue 3 + InsightFace buffalo_l + Qdrant + PostgreSQL + Redis
+ระบบลงเวลางานด้วย Face Recognition สำหรับองค์กร, โรงเรียน และงาน Event
+พัฒนาด้วย FastAPI + Vue 3 + InsightFace + Qdrant + PostgreSQL + Redis
 
 ---
 
-## ✨ Quick Start (4 Steps)
+## คุณสมบัติหลัก
 
-> ใช้เวลาประมาณ **5–10 นาที** ขึ้นอยู่กับความเร็ว internet
+| Feature | รายละเอียด |
+|---------|-----------|
+| **Face Recognition** | InsightFace buffalo_l — ความแม่นยำสูง, รองรับใบหน้าไทย |
+| **Real-time** | WebSocket binary pipeline, latency < 500ms |
+| **Multi-Camera** | รองรับกล้อง WebSocket + RTSP (IP Camera/CCTV) พร้อมกันไม่จำกัด |
+| **Mobile Scan** | ใช้สมาร์ทโฟนเป็นกล้องสแกนได้ทันที |
+| **Anti-Spoofing** | MiniFASNet V2 liveness detection — ป้องกันการใช้รูปภาพ |
+| **PDF Report** | รายงานรายวัน + รายเดือน รองรับภาษาไทย |
+| **Monitoring** | Grafana dashboard + Prometheus metrics + auto alerting |
+| **Role-based Auth** | ADMIN / HR / OPERATOR |
+| **Notifications** | Discord, Telegram, Slack, Line Notify, Email |
+| **Backup/Restore** | 7-day rotation, script พร้อมใช้ทั้ง Linux/Windows |
 
-### Step 1 — ติดตั้ง Prerequisites
+---
 
-| ซอฟต์แวร์ | เวอร์ชัน | ลิงก์ดาวน์โหลด |
-|-----------|---------|----------------|
-| Python | **3.12** | https://www.python.org/downloads/release/python-3120/ (✅ check "Add Python to PATH") |
+## Quick Start (4 ขั้นตอน)
+
+> ใช้เวลาประมาณ **5–10 นาที**
+
+### 1. ติดตั้ง Prerequisites
+
+| ซอฟต์แวร์ | เวอร์ชัน | ลิงก์ |
+|-----------|---------|-------|
+| Python | **3.12** | https://www.python.org/downloads/release/python-3120/ |
 | Node.js | LTS | https://nodejs.org |
 | Docker Desktop | latest | https://www.docker.com/products/docker-desktop |
 | Git | any | https://git-scm.com |
 
-### Step 2 — Clone โปรเจกต์
+> Python: ✅ check "Add Python to PATH" ตอนติดตั้ง
+
+### 2. Clone โปรเจกต์
 
 ```bash
 git clone https://github.com/idev006/OmniSight.git
 cd OmniSight
 ```
 
-### Step 3 — เปิด Docker Desktop แล้วรัน setup
+### 3. Setup (ครั้งเดียว)
+
+เปิด Docker Desktop ก่อน แล้วรัน:
 
 ```
 setup.bat
 ```
 
-สคริปต์จะทำทุกอย่างให้อัตโนมัติ:
-- ✅ ตรวจสอบ Python 3.12, Node.js, Docker
-- ✅ สร้าง Python virtual environment (`my_env/`)
-- ✅ ติดตั้ง Python packages (`pip install -r requirements.txt`)
-- ✅ เปิด Docker services (PostgreSQL, Qdrant, Redis)
-- ✅ รัน database migration (`alembic upgrade head`)
-- ✅ ติดตั้ง Node.js packages (`npm install`)
+สคริปต์จะ:
+- ตรวจสอบ Python 3.12, Node.js, Docker
+- สร้าง Python virtual environment
+- ติดตั้ง packages ทั้งหมด
+- เปิด Docker services (PostgreSQL, Qdrant, Redis)
+- รัน database migration
+- ติดตั้ง Node.js packages
 
-### Step 4 — เริ่มพัฒนา
+### 4. เริ่มใช้งาน
 
 ```
 start-dev.bat
 ```
 
-เปิด browser ไปที่:
+เปิด browser:
 
-| Service | URL |
-|---------|-----|
-| 🖥️ Frontend | http://localhost:5173 |
-| 📖 API Docs (Swagger) | http://localhost:8000/docs |
-| 📊 Qdrant Dashboard | http://localhost:6333/dashboard |
-| 📈 Grafana Dashboard | http://localhost:3000 (admin / admin) |
-| 🔬 Prometheus | http://localhost:9090 |
-
-**Default login:** `admin` / `admin`
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Frontend | http://localhost:5173 | admin / admin |
+| API Docs | http://localhost:8000/docs | - |
+| Grafana | http://localhost:3000 | admin / admin |
+| Qdrant | http://localhost:6333/dashboard | - |
 
 ---
 
-## 🏗️ Tech Stack
+## โครงสร้างโปรเจกต์
+
+```
+OmniSight/
+├── backend/                    # FastAPI application
+│   ├── app/
+│   │   ├── api/                # Endpoints (auth, employees, attendance, ws, ...)
+│   │   ├── core/               # Face engine, tracker, security, metrics
+│   │   ├── db/                 # PostgreSQL, Qdrant, Redis clients
+│   │   ├── models/             # SQLAlchemy ORM + Pydantic schemas
+│   │   ├── services/           # Camera manager, notifications, absent alert
+│   │   └── assets/fonts/       # Leelawadee TTF (Thai font for PDF)
+│   ├── alembic/                # Database migrations
+│   ├── scripts/                # Utilities (load_test, seed, download_models)
+│   ├── tests/
+│   │   ├── unit/               # 56 unit tests (security, tracker, config)
+│   │   └── integration/        # Integration tests (requires backend running)
+│   └── .env                    # Dev config (localhost defaults)
+├── frontend/                   # Vue 3 application
+│   └── src/
+│       ├── views/              # Pages (Dashboard, Employees, Attendance, ...)
+│       ├── components/         # UI components
+│       └── stores/             # Pinia stores (auth, camera)
+├── grafana/
+│   └── provisioning/
+│       ├── dashboards/         # Auto-provisioned dashboards
+│       └── alerting/           # 5 alert rules (auto-provisioned)
+├── nginx/                      # Reverse proxy config + SSL
+├── scripts/                    # Ops scripts
+│   ├── backup.sh / backup.ps1  # Backup (7-day rotation)
+│   ├── restore.sh              # Restore from backup
+│   └── smoke_test.py           # Production smoke test
+├── docs/                       # Documentation
+│   ├── USER_GUIDE.md           # คู่มือใช้งาน
+│   ├── DEPLOYMENT.md           # คู่มือ deploy production
+│   └── API_REFERENCE.md        # API reference
+├── docker-compose.yml          # Dev services
+├── docker-compose.prod.yml     # Production full stack
+├── docker-compose.rtsp.yml     # RTSP camera bridge
+├── setup.bat                   # First-time setup
+└── start-dev.bat               # Start dev servers
+```
+
+---
+
+## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Backend | FastAPI (Python 3.12) + SQLAlchemy async + Alembic |
 | AI Engine | InsightFace `buffalo_l` (ONNX Runtime) |
-| Anti-Spoofing | MiniFASNet V2 (optional — download separately) |
+| Anti-Spoofing | MiniFASNet V2 |
 | Vector DB | Qdrant (HNSW + SQ8 quantization) |
 | Cache / Event Bus | Redis (Pub/Sub, cooldown, live settings) |
 | SQL Database | PostgreSQL 16 |
 | Frontend | Vue 3 + Vite + Tailwind CSS + DaisyUI |
-| Production | nginx SSL reverse proxy + Docker Compose |
+| Monitoring | Prometheus + Grafana |
+| Production | nginx SSL + Docker Compose |
 
 ---
 
-## 📁 Project Structure
-
-```
-OmniSight/
-├── backend/              # FastAPI app
-│   ├── app/
-│   │   ├── api/          # Routers (auth, employees, attendance, websocket, …)
-│   │   ├── core/         # Face engine, tracker, security, config
-│   │   ├── db/           # PostgreSQL, Qdrant, Redis clients
-│   │   ├── models/       # SQLAlchemy ORM + Pydantic schemas
-│   │   └── services/     # Camera manager, notifications, absent alert
-│   ├── alembic/          # Database migrations
-│   ├── scripts/          # Utility scripts (load test, seed, model download)
-│   └── .env              # Dev environment (localhost defaults — safe to commit)
-├── frontend/             # Vue 3 app
-│   └── src/
-│       ├── views/        # Pages (Dashboard, Employees, MobileScan, …)
-│       ├── components/   # Reusable UI components
-│       └── stores/       # Pinia stores (auth, camera, …)
-├── docker-compose.yml    # Dev services (PostgreSQL + Qdrant + Redis)
-├── setup.bat             # ✨ First-time setup (run once)
-├── start-dev.bat         # Start backend + frontend
-├── migrate.bat           # Run Alembic migrations
-└── requirements.txt      # Python dependencies
-```
-
----
-
-## 🛠️ Common Commands
+## คำสั่งที่ใช้บ่อย
 
 ```powershell
-# First-time setup (run once)
+# First-time setup
 setup.bat
 
-# Start development servers
+# เริ่ม development servers
 start-dev.bat
 
-# Run database migration after pulling new code
+# รัน migration (หลัง pull code ใหม่)
 migrate.bat upgrade
 
-# Install a new Python package
+# รัน unit tests
+my_env\Scripts\pytest backend\tests\unit\ -v
+
+# รัน integration tests (ต้องเปิด backend ก่อน)
+my_env\Scripts\pytest backend\tests\integration\ -m integration -v
+
+# Production smoke test
+my_env\Scripts\python.exe scripts\smoke_test.py
+
+# ติดตั้ง package ใหม่
 my_env\Scripts\pip.exe install <package>
 
-# Run a Python script
-my_env\Scripts\python.exe backend\scripts\<script>.py
-
-# Stop Docker services
+# หยุด Docker services
 docker compose down
+
+# ดู logs
+docker compose logs -f backend
 ```
 
 ---
 
-## 🤝 Team Workflow (Git)
+## Production Deploy
+
+ดูรายละเอียดใน [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ```bash
-# 1. Before starting work — always pull latest
-git checkout master
-git pull origin master
-
-# 2. Create a feature branch
-git checkout -b feature/your-feature-name
-
-# 3. Work, commit often
-git add .
-git commit -m "feat: describe what you did"
-
-# 4. Push and open a Pull Request
-git push origin feature/your-feature-name
-```
-
-> **หลังจาก pull โค้ดใหม่:** ถ้ามี migration ใหม่ ให้รัน `migrate.bat upgrade` ก่อนเริ่มงาน
-
----
-
-## ⚙️ Environment Variables
-
-ไฟล์ `backend/.env` เก็บค่า default สำหรับ local development — ปลอดภัยที่จะ commit เพราะไม่มี secret จริง
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgresql+asyncpg://omnisight:omnisight_pass@localhost:5432/omnisight` | PostgreSQL connection |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
-| `QDRANT_HOST` | `localhost` | Qdrant host |
-| `SECRET_KEY` | *(dev value)* | JWT signing key — **เปลี่ยนใน production!** |
-| `ONNXRUNTIME_PROVIDER` | `cpu` | `cpu` \| `cuda` \| `dml` |
-
-สำหรับ **production** ให้ copy `.env.prod.example` → `.env.prod` และใส่ค่าจริง (ห้าม commit ไฟล์นี้)
-
----
-
-## 🚀 Production Deploy
-
-```bash
-# Generate SSL cert (self-signed for internal use)
+# 1. สร้าง SSL cert
 sh nginx/generate_self_signed_cert.sh
 
-# Configure production env
+# 2. ตั้งค่า environment
 cp .env.prod.example .env.prod
-# แก้ไข .env.prod: ใส่ passwords จริง, SECRET_KEY จริง
+# แก้ไข .env.prod ใส่ password จริง
 
-# Start production stack
+# 3. Deploy
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+
+# 4. ยืนยัน
+python scripts/smoke_test.py --url https://your-server --insecure
 ```
 
 ---
 
-## 🔧 Troubleshooting
+## เอกสารประกอบ
 
-**`setup.bat` ล้มเหลวที่ pip install**
-- InsightFace อาจต้องการ Visual C++ Build Tools → ติดตั้ง [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-- หรือรัน `install_insightface_win.bat` แยกต่างหาก
+| เอกสาร | เนื้อหา |
+|--------|---------|
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | คู่มือใช้งานสำหรับ HR / Admin / Operator |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | คู่มือ deploy production ทีละขั้นตอน |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | API endpoints, request/response format |
+| [CLAUDE.md](CLAUDE.md) | AI Session handover + project status |
+
+---
+
+## Team Workflow
+
+```bash
+# 1. Pull latest
+git checkout master && git pull origin master
+
+# 2. สร้าง feature branch
+git checkout -b feature/your-feature
+
+# 3. พัฒนา + commit
+git add <files>
+git commit -m "feat: describe your change"
+
+# 4. Push + Pull Request
+git push origin feature/your-feature
+```
+
+> หลัง pull code ใหม่: รัน `migrate.bat upgrade` ก่อนเริ่มงาน
+
+---
+
+## Environment Variables (Dev)
+
+ไฟล์ `backend/.env` — ค่า default สำหรับ local dev (ปลอดภัยที่จะ commit)
+
+| Variable | Default |
+|----------|---------|
+| `DATABASE_URL` | `postgresql+asyncpg://omnisight:omnisight_pass@localhost:5432/omnisight` |
+| `REDIS_URL` | `redis://localhost:6379/0` |
+| `QDRANT_HOST` | `localhost` |
+| `SECRET_KEY` | dev value |
+| `ONNXRUNTIME_PROVIDER` | `cpu` |
+
+Production: ใช้ `.env.prod` — ดู [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
+---
+
+## Troubleshooting
+
+**`setup.bat` ล้มเหลวที่ pip install InsightFace**
+→ ติดตั้ง [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) แล้วรันใหม่
 
 **Port 8000 already in use**
-- `start-dev.bat` จะ kill Python process เก่าให้อัตโนมัติ
-- ถ้ายังไม่หาย: `taskkill /F /IM python.exe`
+→ `start-dev.bat` kill Python process เก่าให้อัตโนมัติ
+→ ถ้ายังไม่หาย: `taskkill /F /IM python.exe`
 
-**Docker services not starting**
-- ตรวจสอบว่า Docker Desktop เปิดอยู่และ WSL 2 backend ทำงานปกติ
-- รัน `docker compose down` แล้ว `docker compose up -d` อีกครั้ง
+**Docker services ไม่ start**
+→ ตรวจสอบว่า Docker Desktop เปิดอยู่
+→ รัน `docker compose down` แล้ว `docker compose up -d`
 
-**`alembic upgrade head` ล้มเหลว**
-- PostgreSQL อาจยังไม่พร้อม รอ 5–10 วินาทีหลัง `docker compose up -d` แล้วรันใหม่
+**alembic upgrade ล้มเหลว**
+→ PostgreSQL อาจยังไม่พร้อม รอ 10 วินาที แล้วรันใหม่
 
 **Face model ไม่ load**
-- ตรวจสอบว่า `models/` มีไฟล์ buffalo_l ครบ หรือรัน: `my_env\Scripts\python.exe backend\scripts\download_models.py`
+→ `my_env\Scripts\python.exe backend\scripts\download_models.py`
 
 ---
 
-## 📊 Key Features
-
-- 👤 **Face Enrollment** — บันทึกใบหน้า 6 template ต่อคน (multi-angle)
-- 🎯 **Real-time Recognition** — WebSocket binary JPEG pipeline, ≤ 500ms latency
-- 📹 **Multi-Camera** — รองรับกล้องหลายตัวพร้อมกัน (WebSocket + RTSP bridge)
-- 📱 **Mobile Scan** — หน้าสแกนบน smartphone เต็มจอ ไม่มี sidebar
-- ⏰ **Attendance Tracking** — Late detection, absent alert, cooldown 5 min
-- 🔔 **Notifications** — Discord, Telegram, Slack, Line Notify, Email (SMTP)
-- 🛡️ **Anti-Spoofing** — MiniFASNet V2 liveness detection (optional)
-- 📈 **Analytics Dashboard** — Present%, Late%, department charts
-- 🔐 **Role-based Auth** — ADMIN / HR / OPERATOR
-
----
-
-*อัปเดตล่าสุด: 2026-05-20 (Sprint 20 — team setup)*
+*อัปเดตล่าสุด: 2026-05-21 (Sprint 24 — Phase 5 Complete)*
