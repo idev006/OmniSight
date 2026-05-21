@@ -1,12 +1,12 @@
 # OmniSight — Sprint Log
 
-> บันทึกสิ่งที่ทำในแต่ละ session/sprint  
+> บันทึกสิ่งที่ทำในแต่ละ session/sprint
 > ใช้เป็น changelog และ handover document สำหรับ session AI ถัดไป
 
 ---
 
 ## Sprint 1 — Project Inception
-**วันที่:** 2026-05-15 (Session 1)  
+**วันที่:** 2026-05-15 (Session 1)
 **เป้าหมาย:** วางแผนโครงการ เขียนเอกสาร
 
 ### สิ่งที่ทำ
@@ -23,7 +23,7 @@
 ---
 
 ## Sprint 2 — Foundation Build
-**วันที่:** 2026-05-16 (Session 2)  
+**วันที่:** 2026-05-16 (Session 2)
 **เป้าหมาย:** สร้าง project skeleton ครบทุกไฟล์
 
 ### สิ่งที่ทำ
@@ -61,7 +61,7 @@
 ---
 
 ## Sprint 3 — InsightFace Installation
-**วันที่:** 2026-05-16 (Session 2 ต่อ)  
+**วันที่:** 2026-05-16 (Session 2 ต่อ)
 **เป้าหมาย:** ติดตั้ง insightface บน Windows ที่ MSVC อยู่ใน F: drive
 
 ### ปัญหาและขั้นตอนแก้ไข
@@ -75,7 +75,7 @@
 | 4 | ติดตั้ง Cython ก่อน | ❌ setuptools ค้น registry ไม่พบ |
 | 5 | `DISTUTILS_USE_SDK=1 + MSSdk=1` | ✅ สำเร็จ! |
 
-หลังติดตั้ง: numpy version mismatch (1.26.4 → 2.4.5)  
+หลังติดตั้ง: numpy version mismatch (1.26.4 → 2.4.5)
 แก้: `--force-reinstall --no-cache-dir --no-deps` rebuild Cython extension
 
 ### Output
@@ -85,7 +85,7 @@
 ---
 
 ## Sprint 4 — Integration Testing
-**วันที่:** 2026-05-17 (Session 3)  
+**วันที่:** 2026-05-17 (Session 3)
 **เป้าหมาย:** ทดสอบระบบ end-to-end
 
 ### สิ่งที่ทำ
@@ -113,7 +113,7 @@
 ---
 
 ## Sprint 5 — GitHub Push
-**วันที่:** 2026-05-17 (Session 3 ต่อ)  
+**วันที่:** 2026-05-17 (Session 3 ต่อ)
 **เป้าหมาย:** Push โค้ดขึ้น GitHub
 
 ### สิ่งที่ทำ
@@ -130,7 +130,7 @@
 ---
 
 ## Sprint 6 — Project Management Documentation
-**วันที่:** 2026-05-17 (Session 3 ต่อ)  
+**วันที่:** 2026-05-17 (Session 3 ต่อ)
 **เป้าหมาย:** สร้างเอกสาร PM เพื่อ track ความคืบหน้า
 
 ### สิ่งที่ทำ
@@ -141,7 +141,7 @@
 ---
 
 ## Sprint 7 — Attendance Auto-Logging ✅ DONE
-**วันที่:** 2026-05-17 (Session 4)  
+**วันที่:** 2026-05-17 (Session 4)
 **เป้าหมาย:** บันทึก attendance เมื่อ scan match + cooldown ป้องกัน log ซ้ำ
 
 ### สิ่งที่ทำ
@@ -190,7 +190,7 @@ Sprint 7 attendance auto-logging: COMPLETE
 ---
 
 ## Sprint 8 — Multi-Camera Architecture Design ✅ DONE (Design)
-**วันที่:** 2026-05-17 (Session 4 ต่อ)  
+**วันที่:** 2026-05-17 (Session 4 ต่อ)
 **เป้าหมาย:** ออกแบบสถาปัตยกรรมรองรับกล้องหลายตัว + Pilot Console
 
 ### สิ่งที่ทำ
@@ -229,7 +229,7 @@ Sprint 7 attendance auto-logging: COMPLETE
 ---
 
 ## Sprint 8 — Auth/Security Implementation ✅ DONE
-**วันที่:** 2026-05-17 (Session 5)  
+**วันที่:** 2026-05-17 (Session 5)
 **เป้าหมาย:** ระบบ Auth/Authz ครบถ้วน — SSOT, server-side authorization, no native dialogs
 
 ### สิ่งที่ทำ
@@ -377,7 +377,7 @@ Sprint 7 attendance auto-logging: COMPLETE
 ---
 
 ## Sprint 10 — Multi-Camera Plug-and-Play ✅ DONE
-**วันที่:** 2026-05-18 (Session 7)  
+**วันที่:** 2026-05-18 (Session 7)
 **เป้าหมาย:** รองรับกล้องทุกประเภท (Webcam, IP Camera, CCTV, Smartphone) ด้วย protocol เดียว + no conflict + best performance
 
 ### สิ่งที่ทำ
@@ -472,7 +472,7 @@ Critical bug fix + Pilot Console integration:
 Camera Type    → Protocol         → Backend Defense
 ───────────────────────────────────────────────────────
 Webcam (2fps)  → WS Binary JPEG  → FPS gate + Thread pool
-IP Camera      → RTSP→WS agent   → FPS gate + Thread pool  
+IP Camera      → RTSP→WS agent   → FPS gate + Thread pool
 Smartphone     → WS Binary JPEG  → FPS gate + Thread pool
 Multiple cams  → Concurrent WS   → asyncio event loop stays free
 ```
@@ -493,7 +493,7 @@ Multiple cams  → Concurrent WS   → asyncio event loop stays free
 ---
 
 ## Sprint 11 — Face Snapshot Evidence ✅ DONE
-**วันที่:** 2026-05-18 (Session 8)  
+**วันที่:** 2026-05-18 (Session 8)
 **เป้าหมาย:** บันทึกรูปใบหน้า (crop จาก frame) ทุกครั้งที่ scan match → เก็บใน disk + แสดงใน Attendance page
 
 ### สิ่งที่ทำ
@@ -560,7 +560,7 @@ uvicorn `--reload` บน Windows มี bug อันตราย:
 ---
 
 ## Sprint 12 — All Settings Live + AI Gates ✅ DONE
-**วันที่:** 2026-05-18 (Session 8 ต่อ)  
+**วันที่:** 2026-05-18 (Session 8 ต่อ)
 **เป้าหมาย:** Settings UI ทุกตัวต้องทำงานจริง + face quality gate ตอน enrollment + unknown face alert
 
 ### ปัญหาที่พบ (BUG-006)
@@ -657,7 +657,7 @@ timeout /t 1 /nobreak >nul
 ---
 
 ## Sprint 13 — Production Hardening + Backup System + Anti-Spoofing ✅ DONE
-**วันที่:** 2026-05-18 (Session 9)  
+**วันที่:** 2026-05-18 (Session 9)
 **เป้าหมาย:** Phase 5 Production stack, backup automation, anti-spoofing MiniFASNet, late/absent detection, BUG-002 fix
 
 ### สิ่งที่ทำ
@@ -691,7 +691,7 @@ class AntiSpoofEngine:
     # MiniFASNet V2 (2.7_80x80_MiniFASNetV2.onnx)
     # input: (batch, 3, 80, 80) NCHW float32 ImageNet-normalized
     # output: (batch, 3) logits → softmax()[1] = liveness score
-    
+
     def init(self, model_dir: str)          # called at startup
     def available -> bool                   # graceful degradation
     def predict(self, img, bbox) -> float   # returns 1.0 if model absent
@@ -1076,7 +1076,7 @@ bash scripts/backup.sh
 
 ## Sprint 15d — Load Test Verification + Prometheus Endpoint (2026-05-19)
 
-**Session:** 15 (continuation)  
+**Session:** 15 (continuation)
 **เป้าหมาย:** ยืนยัน Sprint 15c optimizations ด้วย load test จริง + wire `/metrics` + sync docs
 
 ### งานที่ทำ
@@ -1120,7 +1120,7 @@ Note: Latency is CPU-bound (no GPU). Error rate 0% is the primary SLO — passed
 ---
 
 ## Sprint 16 — Phase 2/3 Completion: ONNX Auto-Detect + Line/Email + Absent Alerts ✅ DONE
-**วันที่:** 2026-05-19  
+**วันที่:** 2026-05-19
 **เป้าหมาย:** ปิด Phase 2 และ Phase 3 ให้ครบ 100%
 
 ### สิ่งที่ทำ
@@ -1150,12 +1150,12 @@ Note: Latency is CPU-bound (no GPU). Error rate 0% is the primary SLO — passed
 ---
 
 ## Sprint 17 — Smooth Multi-Face Overlay + 4× Faster CPU Inference ✅ DONE
-**วันที่:** 2026-05-19  
+**วันที่:** 2026-05-19
 **เป้าหมาย:** แก้ปัญหา bbox กระตุก + เพิ่มความเร็ว CPU inference
 
 ### ปัญหาที่แก้
 
-**ก่อน (Sprint 16):** bbox overlay วาดใหม่ทุกครั้งที่ได้ผล WebSocket → ที่ 2fps bbox กระตุก/หาย 0.5s ทุกครั้ง  
+**ก่อน (Sprint 16):** bbox overlay วาดใหม่ทุกครั้งที่ได้ผล WebSocket → ที่ 2fps bbox กระตุก/หาย 0.5s ทุกครั้ง
 **หลัง (Sprint 17):** `requestAnimationFrame` render loop แยกจาก WebSocket → bbox smooth 60fps + fade animation
 
 ### สิ่งที่ทำ
@@ -1176,15 +1176,15 @@ Note: Latency is CPU-bound (no GPU). Error rate 0% is the primary SLO — passed
 ---
 
 ## Sprint 18 — Debug + Pipeline Analysis + Session Rules (2026-05-19)
-**วันที่:** 2026-05-19  
+**วันที่:** 2026-05-19
 **เป้าหมาย:** ตรวจสอบ anti-spoof, วิเคราะห์ 10+ faces, ทบทวน mobile UI
 
 ### สิ่งที่ทำ
 
 #### 1. Anti-Spoof Debug
-**อาการ:** Anti-spoof ไม่ทำงานเมื่อทดสอบบนมือถือ  
-**สาเหตุ:** `anti_spoof_enabled` seeded ค่า default เป็น `"0"` (disabled by design)  
-**วิธีแก้:** เปิดใน Settings UI → `anti_spoof_enabled = 1` หรือ `redis-cli SET setting:anti_spoof_enabled 1`  
+**อาการ:** Anti-spoof ไม่ทำงานเมื่อทดสอบบนมือถือ
+**สาเหตุ:** `anti_spoof_enabled` seeded ค่า default เป็น `"0"` (disabled by design)
+**วิธีแก้:** เปิดใน Settings UI → `anti_spoof_enabled = 1` หรือ `redis-cli SET setting:anti_spoof_enabled 1`
 **โค้ดที่เกี่ยวข้อง:**
 ```python
 # websocket.py
@@ -1194,7 +1194,7 @@ spoof_enabled = await get_anti_spoof_enabled()   # reads setting:anti_spoof_enab
 ```
 
 #### 2. 10+ Faces Pipeline Analysis
-**คำถาม:** ถ้า frame มี 10++ ใบหน้า ระบบรองรับได้ไหม?  
+**คำถาม:** ถ้า frame มี 10++ ใบหน้า ระบบรองรับได้ไหม?
 **คำตอบ:** รองรับได้ดี — ทุกขั้นตอนหลักเป็น batch/parallel แล้ว
 
 | ขั้นตอน | วิธีการ | ประสิทธิภาพ |
@@ -1208,7 +1208,7 @@ spoof_enabled = await get_anti_spoof_enabled()   # reads setting:anti_spoof_enab
 | `get_unknown_alert_threshold` | Settings cache 5s TTL | ✅ Sprint 15b |
 
 #### 3. MobileScanView Review
-**คำถาม:** Mobile display เหมาะสมไหม?  
+**คำถาม:** Mobile display เหมาะสมไหม?
 **คำตอบ:** เหมาะสมครับ — ออกแบบมาเป็น "Camera Agent" สำหรับ operator ถือที่ประตู
 
 | Feature | รายละเอียด |
@@ -1223,7 +1223,7 @@ spoof_enabled = await get_anti_spoof_enabled()   # reads setting:anti_spoof_enab
 | Unknown hold | รอ 2 frames ก่อนแสดง "ไม่รู้จัก" |
 
 #### 4. Lesson Learned — Worktree Rule
-**เหตุการณ์:** Session รันอยู่ใน worktree (Sprint 14 code) → แก้ไขโค้ดที่มีอยู่แล้วใน main repo (Sprint 15) → เสีย tokens โดยเปล่าประโยชน์  
+**เหตุการณ์:** Session รันอยู่ใน worktree (Sprint 14 code) → แก้ไขโค้ดที่มีอยู่แล้วใน main repo (Sprint 15) → เสีย tokens โดยเปล่าประโยชน์
 **กฎใหม่สำหรับ AI session:**
 1. **อ่านไฟล์จาก main repo เสมอ** — `F:\programming\python\OmniSight\...` ไม่ใช่ worktree path
 2. **เช็คก่อน implement** — Grep/Read main repo ก่อนทุกครั้ง
@@ -1240,21 +1240,21 @@ spoof_enabled = await get_anti_spoof_enabled()   # reads setting:anti_spoof_enab
 ---
 
 ## Sprint 18b — Production Bug Fixes + Anti-Spoof Analysis (2026-05-20)
-**วันที่:** 2026-05-20  
+**วันที่:** 2026-05-20
 **เป้าหมาย:** แก้ bugs จาก production log จริง + วิเคราะห์ปัญหา mobile
 
 ### Bugs ที่พบและแก้ไข
 
 #### BUG-007 — `AttendanceLog.check_in_time` ไม่มีอยู่จริง ✅ Fixed
-**อาการ:** `AbsentAlertService scan error: type object 'AttendanceLog' has no attribute 'check_in_time'`  
-**สาเหตุ:** `absent_alert_service.py` ใช้ชื่อ attribute ผิด — ORM ใช้ `timestamp` ไม่ใช่ `check_in_time`  
-**แก้:** `AttendanceLog.check_in_time` → `AttendanceLog.timestamp`  
+**อาการ:** `AbsentAlertService scan error: type object 'AttendanceLog' has no attribute 'check_in_time'`
+**สาเหตุ:** `absent_alert_service.py` ใช้ชื่อ attribute ผิด — ORM ใช้ `timestamp` ไม่ใช่ `check_in_time`
+**แก้:** `AttendanceLog.check_in_time` → `AttendanceLog.timestamp`
 **ไฟล์:** `backend/app/services/absent_alert_service.py` line 75
 
 #### BUG-008 — Anti-spoof reject ทุก face จาก mobile โดยไม่มี log score ✅ Fixed
-**อาการ:** หลังเปิด `anti_spoof_enabled=1` → mobile scan หยุดทำงาน ไม่มี attendance log  
-**สาเหตุ:** MiniFASNet score จาก mobile = 0.018–0.049 (ต่ำมาก) เพราะ JPEG compression ทำลาย texture  
-**แก้:** เพิ่ม `logger.warning("Anti-spoof REJECTED: score=%.3f threshold=%.3f")` เพื่อ debug  
+**อาการ:** หลังเปิด `anti_spoof_enabled=1` → mobile scan หยุดทำงาน ไม่มี attendance log
+**สาเหตุ:** MiniFASNet score จาก mobile = 0.018–0.049 (ต่ำมาก) เพราะ JPEG compression ทำลาย texture
+**แก้:** เพิ่ม `logger.warning("Anti-spoof REJECTED: score=%.3f threshold=%.3f")` เพื่อ debug
 **ไฟล์:** `backend/app/api/websocket.py` — Step 3 spoof check
 
 ### Anti-Spoof Compatibility Analysis
@@ -1265,7 +1265,7 @@ spoof_enabled = await get_anti_spoof_enabled()   # reads setting:anti_spoof_enab
 | Webcam USB คุณภาพสูง | ปกติ | ✅ ใช้ได้ |
 | Mobile browser scan | 0.018–0.049 | ❌ JPEG compression ทำลาย texture |
 
-**ข้อสรุป:** Anti-spoof ไม่เหมาะสำหรับ real-time mobile scan  
+**ข้อสรุป:** Anti-spoof ไม่เหมาะสำหรับ real-time mobile scan
 **แนวทาง:** เปิด anti-spoof เฉพาะ enrollment, ปิดสำหรับ scan บนมือถือ
 
 ### Mobile Performance Analysis
@@ -1278,9 +1278,9 @@ GPU จะลดเหลือ ~50ms
 
 ### ECONNRESET Analysis
 
-`Error: read/write ECONNRESET` ใน Vite console = **ปกติ** ใน dev mode  
-- เกิดเมื่อ backend restart, mobile ไป background, หรือ network blip  
-- Frontend มี auto-reconnect 3 วินาทีอยู่แล้ว  
+`Error: read/write ECONNRESET` ใน Vite console = **ปกติ** ใน dev mode
+- เกิดเมื่อ backend restart, mobile ไป background, หรือ network blip
+- Frontend มี auto-reconnect 3 วินาทีอยู่แล้ว
 - Production (nginx) ไม่มี error เหล่านี้
 
 ### Files Modified
@@ -1293,7 +1293,7 @@ GPU จะลดเหลือ ~50ms
 ---
 
 ## Sprint 19 — System Info Admin Dashboard (2026-05-20)
-**วันที่:** 2026-05-20  
+**วันที่:** 2026-05-20
 **เป้าหมาย:** หน้า admin ที่แสดงสถานะ services ทุกตัวใน Single Pane of Glass
 
 ### สิ่งที่ทำ
@@ -1353,7 +1353,7 @@ GPU จะลดเหลือ ~50ms
 ---
 
 ## Sprint 20 — 2-Phase Multi-Face Pipeline Redesign (2026-05-20)
-**วันที่:** 2026-05-20  
+**วันที่:** 2026-05-20
 **เป้าหมาย:** World-class multi-face recognition pipeline — ถูกต้อง, รวดเร็ว, ไม่มี race condition
 
 ### Background
@@ -1434,7 +1434,7 @@ Frame arrives
 ---
 
 ## Sprint 20b — Mobile Scan UX Overhaul + Recognition Cache TTL ✅ DONE
-**วันที่:** 2026-05-20–21  
+**วันที่:** 2026-05-20–21
 **เป้าหมาย:** แก้ปัญหา UX บน MobileScanView หลายอย่างที่พบจากการใช้งานจริง
 
 ### ปัญหาที่พบ (จากการทดสอบจริง)
@@ -1522,7 +1522,7 @@ def get_cached_result(self, track_id: int, ttl: float = RESULT_CACHE_S) -> "Face
 ---
 
 ## Sprint 20c — Team Setup (Magic Onboarding) ✅ DONE
-**วันที่:** 2026-05-21  
+**วันที่:** 2026-05-21
 **เป้าหมาย:** ทีมใหม่ clone แล้วพัฒนาได้ใน 10 นาที โดยไม่ต้องถามขั้นตอน
 
 ### สิ่งที่ทำ
@@ -1552,7 +1552,7 @@ def get_cached_result(self, track_id: int, ttl: float = RESULT_CACHE_S) -> "Face
 ---
 
 ## Sprint 21 — Prometheus + Grafana Observability Stack ✅ DONE
-**วันที่:** 2026-05-21  
+**วันที่:** 2026-05-21
 **เป้าหมาย:** visualize `/metrics` endpoint ด้วย Grafana — pre-built dashboard พร้อมใช้ทันที
 
 ### สิ่งที่ทำ
@@ -1603,3 +1603,57 @@ grafana/
 
 ### Commits
 - `8beef1b` — feat(sprint-21): Prometheus + Grafana observability stack
+
+---
+
+## Sprint 22 — Unit Tests + Pre-commit Hooks + Prod Observability ✅ DONE
+**วันที่:** 2026-05-21
+**เป้าหมาย:** Quality gates: ทดสอบ core logic อัตโนมัติ, บังคับ code style, production Prometheus+Grafana
+
+### สิ่งที่ทำ
+
+#### T1 — pytest Test Suite (56 unit tests, 100% pass)
+
+**Infrastructure:**
+- `pyproject.toml` — ruff + pytest config (asyncio_mode=auto, markers, filterwarnings)
+- `requirements-dev.txt` — pytest 8.3.4, pytest-asyncio 0.24.0, pytest-cov, httpx, ruff, pre-commit
+- `backend/tests/conftest.py` — async `client` fixture, `admin_token` + `admin_headers`, `requires_backend` skip marker
+
+**Unit Tests (no DB/network — fast, CI-safe):**
+| ไฟล์ | Scope | Tests |
+|------|-------|-------|
+| `test_config.py` | Settings defaults, lru_cache singleton | 15 |
+| `test_security.py` | password hashing (bcrypt), JWT round-trip, token expiry, CurrentUser role/permission | 21 |
+| `test_tracker.py` | `_iou()` geometry (6 cases), FaceTracker track assignment, stale eviction, result cache TTL | 20 |
+
+**Integration Tests (requires running backend):**
+| ไฟล์ | Tests |
+|------|-------|
+| `test_health.py` | /health status, /metrics endpoint + content |
+| `test_auth.py` | login success/failure, JWT guard on protected endpoints, /auth/me |
+
+รัน unit tests: `pytest -m unit -v` → **56 passed in 17.77s**
+
+#### T2 — Pre-commit Hooks
+
+- `.pre-commit-config.yaml`:
+  - `pre-commit-hooks` v5.0.0: trailing-whitespace, end-of-file-fixer, check-yaml/json, merge-conflict, large-files (1MB), mixed-line-ending (→LF)
+  - `ruff-pre-commit` v0.8.0: ruff lint (--fix) + ruff-format
+  - `mirrors-prettier` v4.0.0-alpha.8: Vue, JS, TS, CSS, HTML
+- ติดตั้ง hooks: `pre-commit install`
+- Hooks ผ่านทุก check ก่อน commit สำเร็จ
+
+#### T3 — Production Observability
+
+- `docker-compose.prod.yml`: เพิ่ม prometheus + grafana services (targets `backend:8000` ใน Docker network เดียวกัน)
+- `prometheus.prod.yml`: scrape config สำหรับ production (ไม่ใช้ host-gateway)
+- `.env.prod.example`: เพิ่ม `GRAFANA_PASSWORD` placeholder
+
+#### ruff-format Auto-fixes
+3 ไฟล์ถูก reformat โดย pre-commit hook:
+- `backend/app/api/attendance.py` — B007 (`dept_name` → `_dept_name`)
+- `backend/app/core/tracker.py` — B905 (strict=False ใน zip)
+- `backend/app/services/attendance_service.py` — B905 (strict=False ใน zip)
+
+### Commits
+- `c1a5a39` — Sprint 22 T1+T2+T3: unit tests, pre-commit hooks, prod observability

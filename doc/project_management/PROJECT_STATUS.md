@@ -1,9 +1,9 @@
 # OmniSight — Project Status Dashboard
 
-> **อัปเดตล่าสุด:** 2026-05-20 (Sprint 20 — 2-phase multi-face pipeline redesign)  
-> **Project Manager / Lead Dev:** idev006  
-> **AI Pair:** Claude Sonnet 4.6  
-> **Repository:** https://github.com/idev006/OmniSight  
+> **อัปเดตล่าสุด:** 2026-05-21 (Sprint 22 — unit tests, pre-commit hooks, prod observability)
+> **Project Manager / Lead Dev:** idev006
+> **AI Pair:** Claude Sonnet 4.6
+> **Repository:** https://github.com/idev006/OmniSight
 
 ---
 
@@ -90,7 +90,7 @@ Phase 5 — Production     █████████████████�
 ---
 
 ## Sprint 11 — Face Snapshot Evidence ✅ DONE
-**วันที่:** 2026-05-18 (Session 8)  
+**วันที่:** 2026-05-18 (Session 8)
 **เป้าหมาย:** บันทึกรูปใบหน้าตอน scan match เป็นหลักฐาน + แสดงใน Attendance page
 
 | # | งาน | สถานะ | วันที่เสร็จ |
@@ -109,7 +109,7 @@ Phase 5 — Production     █████████████████�
 ---
 
 ## Sprint 12 — All Settings Live + AI Gates ✅ DONE
-**วันที่:** 2026-05-18 (Session 8 ต่อ)  
+**วันที่:** 2026-05-18 (Session 8 ต่อ)
 **เป้าหมาย:** ทุก setting ใน Settings UI ต้องทำงานจริง + face quality gate + unknown face alert
 
 | # | งาน | สถานะ | วันที่เสร็จ |
@@ -155,7 +155,7 @@ Phase 5 — Production     █████████████████�
 
 **เป้าหมาย:** รองรับกล้องทุกประเภท + ศูนย์ควบคุม Pilot Console
 
-> Architecture Design เสร็จแล้วใน `doc/claude_version/chapter_17_multi_camera_pilot_console.md`  
+> Architecture Design เสร็จแล้วใน `doc/claude_version/chapter_17_multi_camera_pilot_console.md`
 > ADR-009, ADR-010, ADR-011 บันทึกใน `DECISIONS_LOG.md`
 
 ### Sprint 9 — Camera Backend + Pilot Console
@@ -318,6 +318,25 @@ Phase 5 — Production     █████████████████�
 | S20b.7 | `recognition_cache_ttl` setting — configurable tracker cache (5–300s, default 30s) | ✅ Done | 2026-05-21 |
 | S20b.8 | `tracker.get_cached_result(tid, ttl=cache_ttl)` — TTL read from Redis live | ✅ Done | 2026-05-21 |
 
+### Sprint 22 — Unit Tests + Pre-commit + Prod Observability ✅ DONE
+**วันที่:** 2026-05-21
+
+| # | งาน | สถานะ | วันที่เสร็จ |
+|---|-----|--------|------------|
+| S22.1 | `backend/tests/` pytest infrastructure — conftest, unit/, integration/ | ✅ Done | 2026-05-21 |
+| S22.2 | `test_security.py` — bcrypt + JWT + CurrentUser (21 tests) | ✅ Done | 2026-05-21 |
+| S22.3 | `test_tracker.py` — IoU + FaceTracker + result cache (20 tests) | ✅ Done | 2026-05-21 |
+| S22.4 | `test_config.py` — Settings defaults + lru_cache (15 tests) | ✅ Done | 2026-05-21 |
+| S22.5 | `test_health.py` + `test_auth.py` — integration tests (requires backend) | ✅ Done | 2026-05-21 |
+| S22.6 | `.pre-commit-config.yaml` — ruff + prettier + pre-commit-hooks | ✅ Done | 2026-05-21 |
+| S22.7 | `pyproject.toml` — ruff rules + pytest config (asyncio_mode=auto) | ✅ Done | 2026-05-21 |
+| S22.8 | `requirements-dev.txt` — dev dependencies pinned | ✅ Done | 2026-05-21 |
+| S22.9 | `docker-compose.prod.yml` + `prometheus.prod.yml` — prod Prometheus+Grafana | ✅ Done | 2026-05-21 |
+
+**Unit test result:** `pytest -m unit` → **56 passed in 17.77s** ✅
+
+---
+
 ### Sprint 20c — Team Setup (Magic Onboarding) ✅ DONE
 **วันที่:** 2026-05-21
 
@@ -338,6 +357,9 @@ Phase 5 — Production     █████████████████�
 | 5.11 | System Info admin dashboard | ✅ Done (Sprint 19) | — |
 | 5.12 | 2-phase multi-face pipeline | ✅ Done (Sprint 20) | — |
 | 5.13 | Team onboarding (setup.bat + README) | ✅ Done (Sprint 20c) | — |
+| 5.14 | Unit tests (pytest) — 56 tests, core security + tracker + config | ✅ Done (Sprint 22) | — |
+| 5.15 | Pre-commit hooks (ruff + prettier + hygiene) | ✅ Done (Sprint 22) | — |
+| 5.16 | Prod Prometheus + Grafana (docker-compose.prod.yml) | ✅ Done (Sprint 22) | — |
 
 ---
 
@@ -393,3 +415,5 @@ Phase 5 — Production     █████████████████�
 | Prometheus metrics endpoint | ✅ `GET /metrics` — 14 omnisight metrics + python runtime | Grafana-ready |
 | Grafana dashboard | ✅ Auto-provisioned at http://localhost:3000 — 10 panels pre-built | Sprint 21 |
 | Structured JSON logging | ✅ `logs/omnisight.log` daily rotation, 7-day retention | — |
+| Unit tests | ✅ 56 tests — security/tracker/config (unit) + health/auth (integration) | `pytest -m unit` |
+| Pre-commit hooks | ✅ ruff lint+format + prettier + hygiene checks on every commit | all green |

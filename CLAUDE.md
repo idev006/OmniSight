@@ -1,6 +1,6 @@
 # OmniSight — AI Session Handover
 
-> อ่านไฟล์นี้ก่อนทุกครั้งที่เริ่ม session ใหม่  
+> อ่านไฟล์นี้ก่อนทุกครั้งที่เริ่ม session ใหม่
 > 📖 หลักการทำงาน: `doc/project_management/PHILOSOPHY.md`
 
 ---
@@ -23,8 +23,8 @@
 
 ## โครงการคืออะไร
 
-**OmniSight** — ระบบลงเวลางานด้วย Face Recognition  
-เป้าหมายแรก: Enterprise HR (พนักงานบริษัท)  
+**OmniSight** — ระบบลงเวลางานด้วย Face Recognition
+เป้าหมายแรก: Enterprise HR (พนักงานบริษัท)
 เป้าหมายในอนาคต: โรงเรียน, ห้องประชุม, Multi-purpose
 
 **Tech Stack:**
@@ -220,12 +220,23 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-## งานที่ต้องทำถัดไป (Sprint 22+)
+## สถานะ Sprint 22 (✅ DONE — 2026-05-21)
+
+| งาน | สถานะ |
+|-----|-------|
+| Unit tests (pytest) — 56 tests: security, tracker, config, health, auth | ✅ Done |
+| Pre-commit hooks (.pre-commit-config.yaml) — ruff + prettier + hygiene | ✅ Done |
+| pyproject.toml — ruff rules + pytest config (asyncio_mode=auto) | ✅ Done |
+| requirements-dev.txt — dev deps pinned | ✅ Done |
+| docker-compose.prod.yml — Prometheus + Grafana prod services | ✅ Done |
+| prometheus.prod.yml — prod scrape config | ✅ Done |
+
+## งานที่ต้องทำถัดไป (Sprint 23+)
 
 ### ลำดับความสำคัญ
-1. 🟢 **Unit tests** — ทีมจะมาช่วย — ต้องมี pytest coverage ป้องกัน regression
-2. 🟢 **Export PDF report** — HR ต้องการ attendance report ดาวน์โหลดเป็น PDF
-3. 🟢 **Phase 5 → 100%** — Grafana done ✅, เหลือ unit tests + production smoke test
+1. 🟡 **Export PDF report** — HR ต้องการ attendance report ดาวน์โหลดเป็น PDF
+2. 🟢 **Phase 5 → 100%** — unit tests ✅, Grafana ✅, เหลือ production smoke test
+3. 🟢 **GitHub push** — Sprint 21–22 ยังไม่ได้ push (รอ approval)
 
 ---
 
@@ -243,7 +254,7 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 |------|---------|
 | `doc/project_management/PHILOSOPHY.md` | **หลักการทำงาน 7 ข้อ** — อ่านก่อนเริ่มงานทุก session |
 | `doc/project_management/PROJECT_STATUS.md` | Dashboard + phase tracking |
-| `doc/project_management/SPRINT_LOG.md` | Sprint 1–18 history + context |
+| `doc/project_management/SPRINT_LOG.md` | Sprint 1–22 history + context |
 | `doc/project_management/DECISIONS_LOG.md` | ADR-001 ถึง ADR-011 |
 | `doc/claude_version/chapter_17_multi_camera_pilot_console.md` | Multi-camera & Pilot Console design |
 | `doc/claude_version/chapter_22_auth_authorization.md` | Auth/Authz — seq diagrams + API matrix |
@@ -279,4 +290,4 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-21 (Sprint 21 — Grafana observability stack, load test Sprint 21: p50=1.2s error=0%)*
+*อัพเดทล่าสุด: 2026-05-21 (Sprint 22 — unit tests 56 tests 100% pass, pre-commit hooks, prod Prometheus+Grafana)*
