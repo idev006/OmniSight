@@ -171,7 +171,7 @@ if errorlevel 1 (
     echo  │    2. Select workload: "Desktop development with C++"           │
     echo  │    3. Install, then re-run this script                          │
     echo  │                                                                 │
-    echo  │  Alternative: run  install_insightface_win.bat  separately      │
+    echo  │  Alternative: run  install_insightface.bat  separately           │
     echo  └─────────────────────────────────────────────────────────────────┘
     echo.
     pause
@@ -272,6 +272,37 @@ cd /d "%~dp0"
 echo   Done
 echo.
 
+
+REM ══════════════════════════════════════════════════════════════════════════
+REM  STEP 6 (OPTIONAL) — Anti-spoofing model
+REM ══════════════════════════════════════════════════════════════════════════
+echo.
+echo ─────────────────────────────────────────────────────────────────────────
+echo  [OPTIONAL] Anti-spoofing model (MiniFASNet, ~2 MB)
+echo.
+echo  Enables liveness detection during enrollment (rejects printed photos).
+echo  Can be skipped now and enabled later via Settings UI.
+echo.
+set /p DOWNLOAD_SPOOF="  Download anti-spoof model now? [Y/n]: "
+if /i "!DOWNLOAD_SPOOF!"=="n" goto skip_antispoof
+if /i "!DOWNLOAD_SPOOF!"=="N" goto skip_antispoof
+
+echo   Downloading...
+"%~dp0my_env\Scripts\python.exe" "%~dp0backend\scripts\download_anti_spoof_model.py"
+if errorlevel 1 (
+    echo   [WARNING] Download failed — you can retry later:
+    echo     my_env\Scripts\python.exe backend\scripts\download_anti_spoof_model.py
+) else (
+    echo   Anti-spoof model ready.
+)
+goto done_antispoof
+
+:skip_antispoof
+echo   Skipped. To download later:
+echo     my_env\Scripts\python.exe backend\scripts\download_anti_spoof_model.py
+
+:done_antispoof
+echo.
 
 REM ══════════════════════════════════════════════════════════════════════════
 REM  DONE
