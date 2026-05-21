@@ -220,23 +220,36 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-## สถานะ Sprint 22 (✅ DONE — 2026-05-21)
+## สถานะ Sprint 22–23 (✅ DONE — 2026-05-21)
 
 | งาน | สถานะ |
 |-----|-------|
 | Unit tests (pytest) — 56 tests: security, tracker, config, health, auth | ✅ Done |
 | Pre-commit hooks (.pre-commit-config.yaml) — ruff + prettier + hygiene | ✅ Done |
-| pyproject.toml — ruff rules + pytest config (asyncio_mode=auto) | ✅ Done |
-| requirements-dev.txt — dev deps pinned | ✅ Done |
 | docker-compose.prod.yml — Prometheus + Grafana prod services | ✅ Done |
-| prometheus.prod.yml — prod scrape config | ✅ Done |
+| Daily PDF report — `GET /api/v1/attendance/daily-report/pdf` | ✅ Done |
+| Thai font (Leelawadee TTF bundled) — ชื่อไทยโชว์ถูกต้องใน PDF | ✅ Done |
+| Monthly PDF report — `GET /api/v1/attendance/summary/pdf` | ✅ Done |
+| `app/core/pdf_utils.py` — font registration helper | ✅ Done |
 
-## งานที่ต้องทำถัดไป (Sprint 23+)
+## PDF Report Architecture
+
+| Component | รายละเอียด |
+|-----------|-----------|
+| Font | Leelawadee TTF (bundled `app/assets/fonts/`) — Thai + Latin, OFL license |
+| Font fallback | Helvetica (ReportLab built-in) ถ้าไฟล์ font หาย |
+| Daily PDF | `GET /api/v1/attendance/daily-report/pdf` — A4 landscape, status color-coded |
+| Monthly PDF | `GET /api/v1/attendance/summary/pdf` — A4 portrait, daily + dept breakdown |
+| Frontend | Daily Status + Monthly Report tabs มีปุ่ม "Export PDF" ต่างหากจาก CSV |
+| Auth | ต้องการ HR หรือ ADMIN role |
+
+## งานที่ต้องทำถัดไป (Sprint 24+)
 
 ### ลำดับความสำคัญ
-1. 🟡 **Export PDF report** — HR ต้องการ attendance report ดาวน์โหลดเป็น PDF
-2. 🟢 **Phase 5 → 100%** — unit tests ✅, Grafana ✅, เหลือ production smoke test
-3. 🟢 **GitHub push** — Sprint 21–22 ยังไม่ได้ push (รอ approval)
+1. 🟡 **GitHub push** — Sprint 21–23 ยังไม่ได้ push (รอ approval)
+2. 🟢 **Phase 5 → 100%** — production smoke test (`docker-compose.prod.yml` จริง)
+3. 🟢 **Integration test coverage** — attendance, employees, enrollment endpoints
+4. 🟢 **Grafana alerting rules** — alert: error_rate > 1%, camera drop, latency spike
 
 ---
 
@@ -290,4 +303,4 @@ Session อาจรันอยู่ใน worktree (`.claude/worktrees/...`) 
 
 ---
 
-*อัพเดทล่าสุด: 2026-05-21 (Sprint 22 — unit tests 56 tests 100% pass, pre-commit hooks, prod Prometheus+Grafana)*
+*อัพเดทล่าสุด: 2026-05-21 (Sprint 23 — Thai font PDF, daily+monthly PDF export, ruff cleanup)*

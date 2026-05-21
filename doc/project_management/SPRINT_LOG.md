@@ -1657,3 +1657,65 @@ grafana/
 
 ### Commits
 - `c1a5a39` — Sprint 22 T1+T2+T3: unit tests, pre-commit hooks, prod observability
+
+---
+
+## Sprint 23 — Thai Font PDF + Monthly PDF Export ✅ DONE
+**วันที่:** 2026-05-21
+**เป้าหมาย:** PDF reports ที่ใช้งานได้จริงสำหรับ HR ไทย — ภาษาไทยโชว์ถูกต้อง + monthly summary
+
+### สิ่งที่ทำ
+
+#### 1. Thai Font Support — `backend/app/assets/fonts/`
+- Bundle **Leelawadee** TTF (Regular + Bold, ~96KB each) ไว้ใน repo
+  - License: OFL (Microsoft font — free redistribution)
+  - Support: Thai + Latin, อ่านง่าย ทั้ง HR + technical
+- `backend/app/core/pdf_utils.py` (NEW):
+  - `_register()` — register font กับ ReportLab `pdfmetrics` ครั้งเดียว (lru_cache)
+  - `get_font()` / `get_font_bold()` — return ชื่อ font ที่ register แล้ว หรือ fallback Helvetica
+  - Constants: `BODY_SIZE=9`, `HEADER_SIZE=10`, `TITLE_SIZE=14`
+
+**ผลลัพธ์**: ชื่อภาษาไทย เช่น "สมชาย ใจดี", "วิศวกรรม" โชว์ถูกต้องใน PDF แทน `□□□`
+
+#### 2. Daily PDF — Thai-aware Rewrite
+- `_build_daily_report_pdf()` rewritten ให้ใช้ `get_font()` / `get_font_bold()`
+- ทุก `FONTNAME` ใน TableStyle, ParagraphStyle ใช้ Thai font
+- Column widths ปรับให้รองรับชื่อภาษาไทยที่ยาวขึ้น
+
+#### 3. Monthly PDF — NEW endpoint + builder
+- `_build_monthly_report_pdf()` — Portrait A4 layout:
+  - Header: title + month
+  - Summary stats box: Total Records / Unique Employees
+  - Daily breakdown table: date | count | unique employees (ทุกวันในเดือน, zero-filled)
+  - Department breakdown table: dept name | count | unique employees
+  - Footer: generated timestamp (UTC)
+  - ใช้ Thai font ตลอด
+
+- `GET /api/v1/attendance/summary/pdf` — mirrors `/summary` JSON, return PDF
+  - Query params: `month=YYYY-MM`, `dept_id` (เหมือน JSON endpoint)
+  - Filename: `attendance_monthly_YYYY-MM.pdf`
+
+#### 4. Frontend — Monthly Report tab
+- AttendanceView.vue Monthly Report tab: เปลี่ยนจาก 1 ปุ่ม (CSV) → 2 ปุ่ม (CSV + Export PDF)
+- `exportMonthlyPDF()`: GET with responseType=blob → Blob → `<a download>`
+- `monthlyPdfLoading` spinner ขณะ fetch
+- Respects selected month + dept filter
+
+### API Endpoints เพิ่มใหม่
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/attendance/summary/pdf` | Monthly attendance summary PDF |
+
+### Files Modified/Created
+| File | การเปลี่ยนแปลง |
+|------|---------------|
+| `backend/app/assets/fonts/Leelawadee.ttf` | NEW — bundled Thai font (Regular) |
+| `backend/app/assets/fonts/Leelawadee-Bold.ttf` | NEW — bundled Thai font (Bold) |
+| `backend/app/core/pdf_utils.py` | NEW — font registration + constants |
+| `backend/app/api/attendance.py` | rewrite daily PDF builder + add monthly PDF |
+| `frontend/src/views/AttendanceView.vue` | monthly tab: CSV+PDF buttons, exportMonthlyPDF() |
+
+### Commits
+- `2bc3db4` — refactor: ruff auto-fix (unused imports)
+- `3f617c6` — feat(sprint-23): Thai font PDF + monthly PDF export
